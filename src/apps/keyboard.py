@@ -59,17 +59,30 @@ class VirtualKeyboard(Gtk.Window):
         self.move(0, sh - height)
 
     def create_keys(self):
-        """Create all key buttons"""
+        """Create all key buttons dynamically with expansion"""
         for row, key_row in enumerate(self.keys_layout):
-            for col, key in enumerate(key_row):
+            col = 0
+            for key in key_row:
                 btn = Gtk.Button(label=key)
-                btn.set_size_request(70, 60)
+                btn.set_hexpand(True)
+                btn.set_vexpand(True)
+                btn.set_size_request(-1, -1)  # remove fixed size
                 btn.connect("pressed", self.on_key_pressed, key)
                 btn.connect("released", self.on_key_released)
+
                 if key == "Space":
+                    # make spacebar span multiple columns
                     self.grid.attach(btn, col, row, 5, 1)
+                    col += 5
                 else:
                     self.grid.attach(btn, col, row, 1, 1)
+                    col += 1
+
+        # Let all rows/cols expand evenly
+        for i in range(len(max(self.keys_layout, key=len))):
+            self.grid.set_column_homogeneous(True)
+        self.grid.set_row_homogeneous(True)
+
 
     def send_key(self, key):
         """Send key using xdotool with shift/ctrl support"""
