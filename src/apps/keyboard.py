@@ -33,7 +33,9 @@ class VirtualKeyboard(Gtk.Window):
 
         # Grid container for keys
         self.grid = Gtk.Grid()
-        self.vbox.pack_end(self.grid, True, True, 0)
+ #       self.vbox.pack_end(self.grid, True, True, 0)
+        self.grid.set_column_homogeneous(True)
+        self.vbox.pack_start(self.grid, True, True, 0)  # <- ensures it fills remaining space
 
         # Define keyboard layout
         self.keys_layout = [
