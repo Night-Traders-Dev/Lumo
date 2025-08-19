@@ -12,7 +12,8 @@ class TouchShell:
         self.edge_trigger = LeftEdgeTrigger(self)
 
         self.drawer_open = False
-        self.fav_open = False
+        self.favorites.slide_in()
+        self.fav_open = True
 
     def toggle(self, close_only=False):
         if self.drawer_open or close_only:
