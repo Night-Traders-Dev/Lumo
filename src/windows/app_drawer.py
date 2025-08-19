@@ -1,6 +1,6 @@
 # Lumo/src/windows/app_drawer.py
 from gi.repository import Gtk, GLib, Gdk
-from config.config import DRAWER_WIDTH_RATIO, PANEL_HEIGHT
+from config.config import *
 from shell.utils import get_display_geo, discover_apps, exec_cmd
 from styles.styles import load_css
 

@@ -24,8 +24,11 @@ class LeftFavorites(Gtk.Window):
         sw, sh = get_display_geo()
         self.sw = sw
         self.sh = sh
-        self.set_default_size(DOCK_WIDTH, sh - PANEL_HEIGHT)
-        self.move(-DOCK_WIDTH, PANEL_HEIGHT)  # start offscreen left
+
+        # Width of favorites bar (can be adjusted)
+        self.width = DOCK_WIDTH
+        self.set_default_size(self.width, sh - PANEL_HEIGHT)
+        self.move(-self.width, PANEL_HEIGHT)  # start offscreen left
 
         vb = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         vb.set_margin_top(8)
@@ -47,12 +50,13 @@ class LeftFavorites(Gtk.Window):
             btn.connect("clicked", self._launch_and_hide, app["cmd"])
             vb.pack_start(btn, False, False, 2)
 
+        # Gesture swipe
         swipe = Gtk.GestureSwipe.new(self)
         swipe.connect("swipe", self.on_swipe)
 
         self.anim_id = None
         self.anim_open_x = 0
-        self.anim_closed_x = -DOCK_WIDTH
+        self.anim_closed_x = -self.width
         self.hide()
 
     def _launch_and_hide(self, _btn, cmd):
@@ -79,6 +83,7 @@ class LeftFavorites(Gtk.Window):
     def _start_anim(self, opening=True, duration_ms=160):
         if self.anim_id:
             GLib.source_remove(self.anim_id)
+
         start = GLib.get_monotonic_time()
         start_x, end_x = (self.anim_closed_x, self.anim_open_x) if opening else (self.anim_open_x, self.anim_closed_x)
 
@@ -114,20 +119,20 @@ class LeftEdgeTrigger(Gtk.Window):
         self.set_name("edge-trigger")
 
         sw, sh = get_display_geo()
-        self.set_default_size(EDGE_TRIGGER_W, sh - PANEL_HEIGHT)
+        self.sw = sw
+        self.sh = sh
+        self.width = EDGE_TRIGGER_W
+        self.set_default_size(self.width, sh - PANEL_HEIGHT)
         self.move(0, PANEL_HEIGHT)
 
-        # EventBox for click/hover, constrained to the window size
+        # EventBox for click/hover
         eb = Gtk.EventBox()
         eb.set_visible_window(True)
-        eb.set_size_request(EDGE_TRIGGER_W, sh - PANEL_HEIGHT)
-        eb.set_hexpand(False)
-        eb.set_vexpand(False)
+        eb.set_size_request(self.width, sh - PANEL_HEIGHT)
         eb.connect("button-press-event", self._open)
         eb.connect("enter-notify-event", self._maybe_open)
         self.add(eb)
         self.show()
-        # Use show() instead of show_all() to prevent children from expanding beyond EDGE_TRIGGER_W
 
     def _open(self, *_):
         self.shell.toggle_favorites(close_only=False)

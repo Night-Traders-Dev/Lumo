@@ -33,3 +33,16 @@ class TouchShell:
                 self.toggle(close_only=True)
             self.favorites.slide_in()
             self.fav_open = True
+
+    # Optional: force open / close helpers
+    def open_favorites(self):
+        if not self.fav_open:
+            if self.drawer_open:
+                self.toggle(close_only=True)
+            self.favorites.slide_in()
+            self.fav_open = True
+
+    def close_favorites(self):
+        if self.fav_open:
+            self.favorites.slide_out()
+            self.fav_open = False

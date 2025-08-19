@@ -1,7 +1,7 @@
 # Lumo/src/windows/panel.py
 import time
 from gi.repository import Gtk, GLib, Gdk
-from config.config import PANEL_HEIGHT
+from config.config import *
 from shell.utils import get_display_geo
 from styles.styles import load_css
 
