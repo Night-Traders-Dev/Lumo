@@ -1,0 +1,7 @@
+apps/__pycache__
+config/__pycache__
+styles/__pycache__
+shell/__pycache__
+windows/__pycache__
+__pycache__
+*.pyc
