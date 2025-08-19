@@ -11,39 +11,30 @@ class TouchShell:
         self.favorites = LeftFavorites(self)
         self.edge_trigger = LeftEdgeTrigger(self)
 
-        self.drawer_open = False
-        self.favorites.slide_in()
-        self.fav_open = True
-
     def toggle(self, close_only=False):
-        if self.drawer_open or close_only:
+        if self.drawer.is_visible() or close_only:
             self.drawer.slide_out()
-            self.drawer_open = False
         else:
-            if self.fav_open:
+            if self.favorites.is_visible():
                 self.toggle_favorites(close_only=True)
             self.drawer.slide_in()
-            self.drawer_open = True
 
     def toggle_favorites(self, close_only=False):
-        if self.fav_open or close_only:
+        if self.favorites.is_visible() or close_only:
             self.favorites.slide_out()
-            self.fav_open = False
         else:
-            if self.drawer_open:
+            if self.drawer.is_visible():
                 self.toggle(close_only=True)
             self.favorites.slide_in()
-            self.fav_open = True
 
-    # Optional: force open / close helpers
+    # Optional helpers
     def open_favorites(self):
-        if not self.fav_open:
-            if self.drawer_open:
+        if not self.favorites.is_visible():
+            if self.drawer.is_visible():
                 self.toggle(close_only=True)
             self.favorites.slide_in()
-            self.fav_open = True
 
     def close_favorites(self):
-        if self.fav_open:
+        if self.favorites.is_visible():
             self.favorites.slide_out()
-            self.fav_open = False
+
