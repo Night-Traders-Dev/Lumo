@@ -46,7 +46,7 @@ apt install python3-gi python3-gi-cairo gir1.2-gtk-3.0 xdotool
 Clone the repository:
 
 ```bash
-git clone https://github.com/yourusername/lumo.git
+git clone https://github.com/Night-Traders-Dev/lumo.git
 cd lumo/src
 ```
 
@@ -131,11 +131,6 @@ MIT License. See `LICENSE` for details.
 
 ---
 
-## Screenshots
-
-*Add screenshots here to showcase Lumo's interface, launcher, favorites bar, keyboard, and file manager.*
-
----
 
 ## Notes
 
