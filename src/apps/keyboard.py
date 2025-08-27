@@ -10,7 +10,7 @@ class VirtualKeyboard(Gtk.Window):
         super().__init__(title="Virtual Keyboard")
         self.set_keep_above(True)
         self.set_decorated(False)
-        self.set_resizable(False)
+        self.set_resizable(True)
         self.set_accept_focus(False)
 
         self.shift = False
@@ -33,9 +33,11 @@ class VirtualKeyboard(Gtk.Window):
 
         # Grid container for keys
         self.grid = Gtk.Grid()
- #       self.vbox.pack_end(self.grid, True, True, 0)
         self.grid.set_column_homogeneous(True)
-        self.vbox.pack_start(self.grid, True, True, 0)  # <- ensures it fills remaining space
+        self.vbox.pack_start(self.grid, True, True, 0)
+        self.grid.set_hexpand(True)
+        self.grid.set_vexpand(True)
+
 
         # Define keyboard layout
         self.keys_layout = [
@@ -49,19 +51,22 @@ class VirtualKeyboard(Gtk.Window):
         self.position_keyboard()
         # Connect to screen resize to adjust dynamically
         screen = Gdk.Screen.get_default()
-        screen.connect("size-changed", lambda *_: self.position_keyboard())
-
+        if screen:
+            screen.connect("size-changed", lambda *_: self.position_keyboard())
+        else:
+            # fallback screen: call position_keyboard once
+            self.position_keyboard()
     def create_keys(self):
         """Create all key buttons dynamically with proper expansion"""
         self.grid.foreach(lambda w: self.grid.remove(w))
         max_cols = max(len(row) for row in self.keys_layout)
-    
+
         for r, key_row in enumerate(self.keys_layout):
             col = 0
             for key in key_row:
                 btn = Gtk.Button(label=key)
-                btn.set_hexpand(True)
-                btn.set_vexpand(True)
+#                btn.set_hexpand(True)
+#                btn.set_vexpand(True)
                 btn.connect("pressed", self.on_key_pressed, key)
                 btn.connect("released", self.on_key_released)
 
@@ -83,7 +88,10 @@ class VirtualKeyboard(Gtk.Window):
     def position_keyboard(self):
         """Position and size keyboard based on current screen"""
         screen = Gdk.Screen.get_default()
-        sw, sh = screen.get_width(), screen.get_height()
+        if screen:
+            sw, sh = screen.get_width(), screen.get_height()
+        else:
+            sw, sh = 1440, 3000
         height = int(sh * 0.25)
         self.set_default_size(sw, height)
         self.move(0, sh - height)
