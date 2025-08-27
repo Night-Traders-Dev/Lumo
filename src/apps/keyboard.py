@@ -61,6 +61,8 @@ class VirtualKeyboard(Gtk.Window):
             self.create_keys()
             self.position_keyboard()
 
+
+
     def create_keys(self):
         """Create all key buttons dynamically with proper expansion"""
         # Clear previous buttons
@@ -114,6 +116,31 @@ class VirtualKeyboard(Gtk.Window):
 
 
     def on_size_allocate(self, widget, allocation):
+        """Once GTK sets the real size, slide us flush inside the monitor."""
+        screen = Gdk.Screen.get_default()
+        if not screen:
+            return
+        win = widget.get_window()
+        if not win:
+            return
+
+        mon = screen.get_monitor_at_window(win)
+        work = screen.get_monitor_workarea(mon)
+
+        # Position at the BOTTOM-LEFT corner instead of bottom-right
+        x = work.x
+        y = work.y + work.height - allocation.height
+
+        # safety clamp, just in case
+        x = max(x, work.x)
+        y = max(y, work.y)
+
+        widget.move(x, y)
+
+
+
+
+    def on_size_allocate23(self, widget, allocation):
         """Once GTK sets the real size, slide us flush inside the monitor."""
         screen = Gdk.Screen.get_default()
         mon = screen.get_monitor_at_window(widget.get_window())
