@@ -11,10 +11,11 @@ FAVORITES = [
     {"name": "Keyboard", "icon": "input-keyboard",      "cmd": keyboard.launch}
 ]
 
+
 DOCK_WIDTH = 64
 PANEL_HEIGHT = 48
 DRAWER_WIDTH_RATIO = 0.6
 DRAWER_BG_ALPHA = 0.7
 DOCK_BG_ALPHA = 0.7
 FAVORITES_BG_ALPHA = 0.7
-EDGE_TRIGGER_W = 10
+EDGE_TRIGGER_W = 5
