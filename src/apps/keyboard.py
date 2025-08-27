@@ -138,25 +138,6 @@ class VirtualKeyboard(Gtk.Window):
         widget.move(x, y)
 
 
-
-
-    def on_size_allocate23(self, widget, allocation):
-        """Once GTK sets the real size, slide us flush inside the monitor."""
-        screen = Gdk.Screen.get_default()
-        mon = screen.get_monitor_at_window(widget.get_window())
-        work = screen.get_monitor_workarea(mon)
-
-        # bottom-right corner of the workarea
-        x = work.x + work.width  - allocation.width
-        y = work.y + work.height - allocation.height
-
-        # safety clamp, just in case
-        x = max(x, work.x)
-        y = max(y, work.y)
-
-        widget.move(x, y)
-
-
     def send_key(self, key):
         """Send key using xdotool with shift/ctrl support"""
         args = ["xdotool"]
