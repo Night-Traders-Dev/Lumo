@@ -23,7 +23,7 @@ class VirtualKeyboard(Gtk.Window):
         self.repeat_id = None  # for key repeat
 
         # Main container
-        self.vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        self.vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=20)
         self.vbox.set_margin_top(1)
         self.vbox.set_margin_bottom(1)
         self.vbox.set_margin_start(1)
@@ -73,10 +73,10 @@ class VirtualKeyboard(Gtk.Window):
                 btn.connect("released", self.on_key_released)
 
                 # Set minimum button size for better visibility
-                btn.set_size_request(50, 35)
+                btn.set_size_request(10, 4)
 
                 # Special widths for certain keys
-                if key == "Space":
+                if key in ["Space", "Ctrl", "Enter"]:
                     self.grid.attach(btn, col, r, 4, 1)  # Space spans 4 columns
                     col += 4
                 elif key in ["Shift", "Backspace"]:
@@ -93,18 +93,18 @@ class VirtualKeyboard(Gtk.Window):
             sw, sh = screen.get_width(), screen.get_height()
         else:
             sw, sh = 1440, 3000
-        
+
         width = int(sw * wLimit)
         height = int(sh * hLimit)
-        
+
         # Ensure minimum size
-        width = max(width, 600)
-        height = max(height, 200)
-        
+        width = max(width, 200)
+        height = max(height, 100)
+
         self.set_default_size(width, height)
         # Center horizontally, position at bottom
-        x = (sw - width) // 2
-        y = sh - height - 20  # 20px margin from bottom
+        x = (sw - width) // 10
+        y = sh - height - 1
         self.move(x, y)
 
     def send_key(self, key):
