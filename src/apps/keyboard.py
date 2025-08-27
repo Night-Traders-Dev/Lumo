@@ -89,17 +89,26 @@ class VirtualKeyboard(Gtk.Window):
             return
         win = self.get_window()
         mon = (screen.get_monitor_at_window(win)
-            if win else screen.get_primary_monitor())
+               if win else screen.get_primary_monitor())
         geo = screen.get_monitor_geometry(mon)
 
         rows = len(self.keys_layout)
-        total_spacing = (rows - 1) * self.grid.get_row_spacing()
+        cols = max(len(r) for r in self.keys_layout)
 
-        w = int(geo.width  * wLimit)
-        h = int((geo.height * hLimit) - total_spacing)
+        total_row_spacing = (rows - 1) * self.grid.get_row_spacing()
+        total_col_spacing = (cols - 1) * self.grid.get_column_spacing()
+        margins = (self.grid.get_margin_top() + self.grid.get_margin_bottom())
+
+        w = int(geo.width * wLimit) - total_col_spacing
+        h = int((geo.height * hLimit) - total_row_spacing - margins)
+
+        w = min(w, geo.width)
+        h = min(h, geo.height - margins)
 
         self.resize(w, h)
         self.queue_resize()
+        GLib.idle_add(lambda: self.resize(*self.get_size()))
+
 
 
     def on_size_allocate(self, widget, allocation):

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 # Lumo/src/windows/file_manager.py
 
 import gi, os, subprocess
