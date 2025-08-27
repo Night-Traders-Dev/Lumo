@@ -2,7 +2,7 @@
 import time
 from gi.repository import Gtk, GLib, Gdk
 from config.config import *
-from shell.utils import get_display_geo, get_active_network
+from shell.utils import get_display_geo, get_active_network, get_battery
 from styles.styles import load_css
 
 
@@ -24,9 +24,9 @@ class TopPanel(Gtk.Window):
         box.set_name("panel")
         self.add(box)
 
-        self.menu_btn = Gtk.Button.new_with_label("≡")
-        self.menu_btn.connect("clicked", lambda *_: self.shell.toggle())
-        box.pack_start(self.menu_btn, False, False, 8)
+#        self.menu_btn = Gtk.Button.new_with_label("≡")
+#        self.menu_btn.connect("clicked", lambda *_: self.shell.toggle())
+#        box.pack_start(self.menu_btn, False, False, 8)
 
         self.clock = Gtk.Label(label="--:--")
         self.clock.get_style_context().add_class("title")
@@ -35,7 +35,8 @@ class TopPanel(Gtk.Window):
 
         right = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
         netType = get_active_network()
-        right_lbl = Gtk.Label(label=f"🔋 100%   📶 {netType}")
+        batteryLevel = get_battery()
+        right_lbl = Gtk.Label(label=f"🔋 {batteryLevel}%   📶 {netType}")
         right.pack_end(right_lbl, False, False, 12)
         box.pack_end(right, False, False, 8)
 

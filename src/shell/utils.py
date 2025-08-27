@@ -1,4 +1,4 @@
-import os, subprocess, configparser, socket, re, gi
+import os, subprocess, configparser, socket, re, gi, json
 gi.require_version("Gdk", "3.0")
 from gi.repository import Gdk
 
@@ -85,3 +85,38 @@ def get_active_network():
         return rmnet_match.group(1)
 
     return "Unknown"
+
+
+def get_battery(host="127.0.0.1", port=12345):
+    """
+    Requests battery status via termux-battery-status 
+    through the same nc listener method as trigger_phone.
+    Returns the battery level percentage (int).
+    """
+    cmd = "termux-battery-status\n"
+
+    # Connect to the listener
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.connect((host, port))
+        s.sendall(cmd.encode())
+
+        # Collect response
+        data = b""
+        s.settimeout(2)
+        try:
+            while True:
+                chunk = s.recv(4096)
+                if not chunk:
+                    break
+                data += chunk
+        except socket.timeout:
+            pass
+
+    # Parse JSON
+    try:
+        battery_info = json.loads(data.decode().strip())
+        return battery_info.get("percentage")
+    except Exception as e:
+        print("Error parsing battery info:", e)
+        print("Raw response:", data.decode(errors="ignore"))
+        return None
