@@ -48,6 +48,8 @@ class VirtualKeyboard(Gtk.Window):
             ["Ctrl","Space","Enter"]
         ]
 
+        self.connect("size-allocate", self.on_size_allocate)
+
         self.create_keys()
         self.position_keyboard()
 
@@ -89,26 +91,43 @@ class VirtualKeyboard(Gtk.Window):
                     self.grid.attach(btn, col, r, 1, 1)
                     col += 1
 
+
     def position_keyboard(self):
-        """Position and size keyboard based on current screen"""
+        """Compute and request the ideal width/height."""
         screen = Gdk.Screen.get_default()
-        if screen:
-            sw, sh = screen.get_width(), screen.get_height()
-        else:
-            sw, sh = 1440, 3000
+        if not screen:
+            return
 
-        width = int(sw * wLimit)
-        height = int(sh * hLimit)
+        # pick the monitor and its usable workarea
+        win = self.get_window()
+        mon = (screen.get_monitor_at_window(win)
+               if win else screen.get_primary_monitor())
+        work = screen.get_monitor_workarea(mon)
 
-        # Ensure minimum size
-        width = max(width, 200)
-        height = max(height, 100)
+        # clamp to a percentage of that workarea
+        w = min(int(work.width  * wLimit), work.width)
+        h = min(int(work.height * hLimit), work.height)
 
-        self.set_default_size(width, height)
-        # Center horizontally, position at bottom
-        x = 0 # (sw - width) // 2
-        y = sh - height
-        self.move(x, y)
+        # request that size—actual window may differ slightly
+        self.resize(w, h)
+
+
+    def on_size_allocate(self, widget, allocation):
+        """Once GTK sets the real size, slide us flush inside the monitor."""
+        screen = Gdk.Screen.get_default()
+        mon = screen.get_monitor_at_window(widget.get_window())
+        work = screen.get_monitor_workarea(mon)
+
+        # bottom-right corner of the workarea
+        x = work.x + work.width  - allocation.width
+        y = work.y + work.height - allocation.height
+
+        # safety clamp, just in case
+        x = max(x, work.x)
+        y = max(y, work.y)
+
+        widget.move(x, y)
+
 
     def send_key(self, key):
         """Send key using xdotool with shift/ctrl support"""
