@@ -3,6 +3,9 @@ import gi, subprocess
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk, Gdk, GLib
 
+hLimit = 0.25
+wLimit = 0.01
+
 _keyboard_window = None  # global reference for toggle
 
 class VirtualKeyboard(Gtk.Window):
@@ -10,27 +13,24 @@ class VirtualKeyboard(Gtk.Window):
         super().__init__(title="Virtual Keyboard")
         self.set_keep_above(True)
         self.set_decorated(False)
-        self.set_resizable(False)  # Fixed width
+        self.set_resizable(True)
         self.set_accept_focus(False)
+        self.set_default_size(800, 300)
+        self.set_border_width(10)
+
+
 
         self.shift = False
         self.ctrl = False
         self.repeat_id = None  # for key repeat
 
         # Main container
-        self.vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
-        self.vbox.set_margin_top(4)
-        self.vbox.set_margin_bottom(4)
-        self.vbox.set_margin_start(4)
-        self.vbox.set_margin_end(4)
+        self.vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        self.vbox.set_margin_top(1)
+        self.vbox.set_margin_bottom(1)
+        self.vbox.set_margin_start(1)
+        self.vbox.set_margin_end(1)
         self.add(self.vbox)
-
-        # Header row with close button
-        header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
-        close_btn = Gtk.Button(label="✕ Close")
-        close_btn.connect("clicked", self.on_close)
-        header.pack_end(close_btn, False, False, 2)
-        self.vbox.pack_start(header, False, False, 0)
 
         # Grid container for keys
         self.grid = Gtk.Grid()
@@ -95,8 +95,9 @@ class VirtualKeyboard(Gtk.Window):
             sw, sh = screen.get_width(), screen.get_height()
         else:
             sw, sh = 1440, 3000
-        height = int(sh * 0.25)
-        self.set_default_size(sw, height)
+        width = int(sw * wLimit)
+        height = int(sh * hLimit)
+        self.set_default_size(width, height)
         self.move(0, sh - height)
 
     def send_key(self, key):
