@@ -16,18 +16,18 @@ class VirtualKeyboard(Gtk.Window):
         self.set_resizable(True)
         self.set_accept_focus(False)
         self.set_default_size(800, 300)
-        self.set_border_width(10)
+        self.set_border_width(0)
 
         self.shift = False
         self.ctrl = False
         self.repeat_id = None  # for key repeat
 
         # Main container
-        self.vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=20)
-        self.vbox.set_margin_top(1)
-        self.vbox.set_margin_bottom(1)
-        self.vbox.set_margin_start(1)
-        self.vbox.set_margin_end(1)
+        self.vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        self.vbox.set_margin_top(0)
+        self.vbox.set_margin_bottom(0)
+        self.vbox.set_margin_start(0)
+        self.vbox.set_margin_end(0)
         self.add(self.vbox)
 
         # Grid container for keys
@@ -73,14 +73,17 @@ class VirtualKeyboard(Gtk.Window):
                 btn.connect("released", self.on_key_released)
 
                 # Set minimum button size for better visibility
-                btn.set_size_request(10, 4)
+                btn.set_size_request(1, 1)
 
                 # Special widths for certain keys
-                if key in ["Space", "Ctrl", "Enter"]:
+                if key in ["Space"]:
                     self.grid.attach(btn, col, r, 4, 1)  # Space spans 4 columns
                     col += 4
+                if key in ["Ctrl", "Enter"]:
+                    self.grid.attach(btn, col, r, 2, 1)  # Space spans 2 columns
+                    col += 3
                 elif key in ["Shift", "Backspace"]:
-                    self.grid.attach(btn, col, r, 2, 1)  # These span 2 columns
+                    self.grid.attach(btn, col, r, 2, 1)  # These span 1 columns
                     col += 2
                 else:
                     self.grid.attach(btn, col, r, 1, 1)
@@ -103,8 +106,8 @@ class VirtualKeyboard(Gtk.Window):
 
         self.set_default_size(width, height)
         # Center horizontally, position at bottom
-        x = (sw - width) // 10
-        y = sh - height - 1
+        x = 0 # (sw - width) // 2
+        y = sh - height
         self.move(x, y)
 
     def send_key(self, key):
