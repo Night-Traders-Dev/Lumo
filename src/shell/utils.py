@@ -120,3 +120,43 @@ def get_battery(host="127.0.0.1", port=12345):
         print("Error parsing battery info:", e)
         print("Raw response:", data.decode(errors="ignore"))
         return None
+
+
+def get_packages(host="127.0.0.1", port=12345):
+    """
+    Requests installed package list via 'cmd package list packages'
+    through the same nc listener method as trigger_phone.
+    Returns a list of package names (str).
+    """
+    cmd = "cmd package list packages\n"
+
+    # Connect to the listener
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.connect((host, port))
+        s.sendall(cmd.encode())
+
+        # Collect response
+        data = b""
+        s.settimeout(2)
+        try:
+            while True:
+                chunk = s.recv(4096)
+                if not chunk:
+                    break
+                data += chunk
+        except socket.timeout:
+            pass
+
+    # Parse plain text response
+    try:
+        output = data.decode(errors="ignore").strip()
+        packages = []
+        for line in output.splitlines():
+            # Lines look like: "package:com.termux"
+            if line.startswith("package:"):
+                packages.append(line.split(":", 1)[1])
+        return packages
+    except Exception as e:
+        print("Error parsing package list:", e)
+        print("Raw response:", data.decode(errors="ignore"))
+        return []
