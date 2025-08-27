@@ -1,5 +1,7 @@
-import os, subprocess, configparser
+import os, subprocess, configparser, socket, re, gi
+gi.require_version("Gdk", "3.0")
 from gi.repository import Gdk
+
 
 def get_display_geo():
     display = Gdk.Display.get_default()
@@ -37,10 +39,49 @@ def discover_apps():
                 continue
     return sorted(apps, key=lambda a: a["name"].lower())
 
-def trigger_phone():
+
+def trigger_phone(host="127.0.0.1", port=12345):
+    """
+    Sends the command to open the Android dialer (am start -a android.intent.action.DIAL)
+    via a local TCP connection to Termux's netcat listener.
+
+    Args:
+        host (str): The host address to connect to (default: 127.0.0.1)
+        port (int): The port number where Termux listener is running (default: 12345)
+    """
+    tst = 'termux-toast "Opening Dialer"\n'
+    cmd = 'am start -a android.intent.action.DIAL\n'
     try:
-        with open("/data/data/com.termux/files/home/call_request.txt", "a") as f:
-            f.write("\n")  # empty = open dialer
-        print("Phone trigger sent")
+        with socket.create_connection((host, port), timeout=5) as s:
+            s.sendall(tst.encode())
+            s.sendall(cmd.encode())
+            s.shutdown(socket.SHUT_WR)
     except Exception as e:
-        print("Failed to trigger phone:", e)
+        print(f"Error triggering phone: {e}")
+
+
+
+def get_active_network():
+    try:
+        out = subprocess.check_output(
+            ["ifconfig"], stderr=subprocess.DEVNULL
+        ).decode()
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        try:
+            out = subprocess.check_output(
+                ["ip", "addr"], stderr=subprocess.DEVNULL
+            ).decode()
+        except Exception:
+            return "Unknown"
+
+    # Check for wlan0 with IPv4
+    wlan_match = re.search(r"wlan0:.*?\n\s+inet (\d+\.\d+\.\d+\.\d+)", out, re.S)
+    if wlan_match:
+        return "wlan0"
+
+    # Check for rmnet_dataX with IPv4 (mobile data)
+    rmnet_match = re.search(r"(rmnet_data\d+):.*?\n\s+inet (\d+\.\d+\.\d+\.\d+)", out, re.S)
+    if rmnet_match:
+        return rmnet_match.group(1)
+
+    return "Unknown"

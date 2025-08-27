@@ -2,7 +2,7 @@
 import time
 from gi.repository import Gtk, GLib, Gdk
 from config.config import *
-from shell.utils import get_display_geo
+from shell.utils import get_display_geo, get_active_network
 from styles.styles import load_css
 
 
@@ -34,7 +34,8 @@ class TopPanel(Gtk.Window):
         GLib.timeout_add_seconds(1, self._tick)
 
         right = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
-        right_lbl = Gtk.Label(label="🔋 100%   📶 LTE")
+        netType = get_active_network()
+        right_lbl = Gtk.Label(label=f"🔋 100%   📶 {netType}")
         right.pack_end(right_lbl, False, False, 12)
         box.pack_end(right, False, False, 8)
 
