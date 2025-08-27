@@ -48,16 +48,17 @@ class VirtualKeyboard(Gtk.Window):
             ["Ctrl","Space","Enter"]
         ]
 
-        self.connect("size-allocate", self.on_size_allocate)
-
-        self.create_keys()
-        self.position_keyboard()
-
         # Connect to screen resize to adjust dynamically
         screen = Gdk.Screen.get_default()
         if screen:
+            self.connect("size-allocate", self.on_size_allocate)
             screen.connect("size-changed", lambda *_: self.position_keyboard())
+            self.create_keys()
+            self.position_keyboard()
         else:
+            self.connect("size-allocate", self.on_size_allocate)
+
+            self.create_keys()
             self.position_keyboard()
 
     def create_keys(self):
