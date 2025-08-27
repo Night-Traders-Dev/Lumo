@@ -62,7 +62,7 @@ class VirtualKeyboard(Gtk.Window):
         """Create all key buttons dynamically with proper expansion"""
         # Clear previous buttons
         self.grid.foreach(lambda w: self.grid.remove(w))
-        
+
         for r, key_row in enumerate(self.keys_layout):
             col = 0
             for key in key_row:
@@ -73,7 +73,7 @@ class VirtualKeyboard(Gtk.Window):
                 btn.connect("released", self.on_key_released)
 
                 # Set minimum button size for better visibility
-                btn.set_size_request(60, 45)
+                btn.set_size_request(50, 35)
 
                 # Special widths for certain keys
                 if key == "Space":
@@ -104,7 +104,7 @@ class VirtualKeyboard(Gtk.Window):
         self.set_default_size(width, height)
         # Center horizontally, position at bottom
         x = (sw - width) // 2
-        y = sh - height - 50  # 50px margin from bottom
+        y = sh - height - 20  # 20px margin from bottom
         self.move(x, y)
 
     def send_key(self, key):
