@@ -19,8 +19,8 @@ class VirtualKeyboard(Gtk.Window):
         # Main container
         self.vbox = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
         self.add(self.vbox)
-        self.vbox.set_hexpand(True)
-        self.vbox.set_vexpand(True)
+#        self.vbox.set_hexpand(True)
+#        self.vbox.set_vexpand(True)
 
         # Grid container for keys
         self.grid = Gtk.Grid()
@@ -28,6 +28,8 @@ class VirtualKeyboard(Gtk.Window):
         self.grid.set_row_homogeneous(True)
         self.grid.set_column_spacing(0)
         self.grid.set_row_spacing(0)
+        self.grid.set_hexpand(True)
+        self.grid.set_vexpand(True)
         self.vbox.pack_start(self.grid, True, True, 0)
 
         # Define keyboard layout
@@ -40,8 +42,8 @@ class VirtualKeyboard(Gtk.Window):
 
         screen = Gdk.Screen.get_default()
         if screen:
-            self.connect("size-allocate", self.on_size_allocate)
             self.create_keys()
+            self.connect("size-allocate", self.on_size_allocate)
 
     def create_keys(self):
         """Create all key buttons dynamically with proper expansion"""
@@ -57,10 +59,7 @@ class VirtualKeyboard(Gtk.Window):
                 if key == "Space":
                     self.grid.attach(btn, col, r, 4, 1)
                     col += 4
-                elif key in ["Ctrl", "Enter"]:
-                    self.grid.attach(btn, col, r, 2, 1)
-                    col += 2
-                elif key in ["Shift", "Backspace"]:
+                elif key in ["Ctrl", "Enter", "Shift"]:
                     self.grid.attach(btn, col, r, 2, 1)
                     col += 2
                 else:
@@ -81,17 +80,16 @@ class VirtualKeyboard(Gtk.Window):
 
         # Full width without going over edges
         x = work.x
-        width = int(work.width // 2)
+        width = int(work.width * 0.12)
 
         # Height = about 1/3 of screen (double what you had before)
-        height = int(work.height * 0.35)
+        height = int(work.height * 0.45)
 
         # Dock to bottom
-        y = int(work.y + work.height - height)
+        y = int(work.y + work.height - (height // 2))
 
-        widget.resize(int(width * 0.5), y) #int(height * 2))
-        widget.move(x, y)
-        print(f"x = {x}\ny = {y}\nwidth {width}\nheight {height}\n\n")
+        widget.resize(1000, height)
+        widget.move(x, (y + 250))
 
     def send_key(self, key):
         args = ["xdotool"]
