@@ -2,6 +2,9 @@ import gi, subprocess
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk, Gdk, GLib
 
+hLimit = 0.35     # Increased for better touch area
+wLimit = 1.0     # Good fit for most displays
+
 _keyboard_window = None  # global reference for toggle
 
 class VirtualKeyboard(Gtk.Window):
@@ -11,6 +14,7 @@ class VirtualKeyboard(Gtk.Window):
         self.set_decorated(False)
         self.set_resizable(False)
         self.set_accept_focus(False)
+        self.set_default_geometry(-1, -1)
 
         self.shift = False
         self.ctrl = False
@@ -42,6 +46,8 @@ class VirtualKeyboard(Gtk.Window):
         if screen:
             self.connect("size-allocate", self.on_size_allocate)
             self.create_keys()
+        else:
+            return 0
 
     def create_keys(self):
         """Create all key buttons dynamically with proper expansion"""
@@ -67,6 +73,7 @@ class VirtualKeyboard(Gtk.Window):
                     self.grid.attach(btn, col, r, 1, 1)
                     col += 1
 
+
     def on_size_allocate(self, widget, allocation):
         """Dock keyboard full width at bottom of screen (Ubuntu Touch style)."""
         screen = Gdk.Screen.get_default()
@@ -79,19 +86,15 @@ class VirtualKeyboard(Gtk.Window):
         monitor = screen.get_monitor_at_window(win)
         work = screen.get_monitor_workarea(monitor)
 
-        # Full width without going over edges
+        # Always flush left (x = work.x)
         x = work.x
-        width = int(work.width // 2)
+        # Always bottom of workarea
+        y = work.y + work.height - allocation.height
 
-        # Height = about 1/3 of screen (double what you had before)
-        height = int(work.height * 0.35)
-
-        # Dock to bottom
-        y = int(work.y + work.height - height)
-
-        widget.resize(int(width * 0.5), y) #int(height * 2))
+        # Expand to full workarea width
+        widget.resize(int(work.width - 50), 500) #int(allocation.height))
         widget.move(x, y)
-        print(f"x = {x}\ny = {y}\nwidth {width}\nheight {height}\n\n")
+
 
     def send_key(self, key):
         args = ["xdotool"]
