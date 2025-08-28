@@ -1,15 +1,18 @@
 # Lumo/src/windows/file_manager.py
-
 import gi, os, subprocess
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gtk, Gdk, Gio
+from gi.repository import Gtk, Gdk
+
+sw = Gdk.Screen.get_default().get_width()
+sh = Gdk.Screen.get_default().get_height()
 
 class FileManager(Gtk.Window):
     def __init__(self, start_path=None):
         super().__init__(title="Lumo File Manager")
-        self.set_default_size(800, 600)
         self.set_keep_above(True)
         self.set_resizable(True)
+        self.set_decorated(False)
+        self.set_default_size(sw, sh)
 
         # Start path
         self.current_path = start_path or os.path.expanduser("~")
@@ -40,6 +43,9 @@ class FileManager(Gtk.Window):
         # Populate initial directory
         self.populate_files(self.current_path)
 
+        # Reposition like the keyboard
+        self.connect("size-allocate", self.on_size_allocate)
+
     def populate_files(self, path):
         self.listbox.foreach(lambda child: self.listbox.remove(child))
         self.current_path = path
@@ -62,16 +68,19 @@ class FileManager(Gtk.Window):
             hbox.pack_start(icon, False, False, 0)
             hbox.pack_start(label, True, True, 0)
             row.add(hbox)
-            row.connect("activate", self.on_item_activated, full_path)
+
+            # Use touch/click instead of activate
+            row.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
+            row.connect("button-press-event", self.on_item_touched, full_path)
+
             self.listbox.add(row)
 
         self.listbox.show_all()
 
-    def on_item_activated(self, row, full_path):
+    def on_item_touched(self, widget, event, full_path):
         if os.path.isdir(full_path):
             self.populate_files(full_path)
         else:
-            # Open file with default system app
             subprocess.Popen(["xdg-open", full_path])
 
     def on_path_entered(self, entry):
@@ -81,8 +90,23 @@ class FileManager(Gtk.Window):
 
     def go_back(self, button):
         parent = os.path.dirname(self.current_path)
+
+        # If already at top-level ("/" or no parent), close the window
+        if not parent or parent == self.current_path or parent == "/":
+            self.destroy()
+            global _file_manager_window
+            _file_manager_window = None
+            return
+
+        # Otherwise navigate up
         if os.path.exists(parent):
             self.populate_files(parent)
+
+    def on_size_allocate(self, widget, allocation):
+        fm_height = int(sh * 0.97)
+        fm_width = sw
+        widget.resize(fm_width, fm_height)
+        widget.move(0, sh - fm_height)
 
 
 # Launch helper
