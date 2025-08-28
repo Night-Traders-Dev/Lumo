@@ -18,6 +18,7 @@ class VirtualKeyboard(Gtk.Window):
         self.set_decorated(False)
         self.set_resizable(False)
         self.set_accept_focus(False)
+        self.set_default_size(int(sw * WIDTH_MULTIPLIER), int(sh * HEIGHT_MULTIPLIER))
 
         self.shift = False
         self.ctrl = False
@@ -80,6 +81,7 @@ class VirtualKeyboard(Gtk.Window):
         kb_width = int(sw * WIDTH_MULTIPLIER)
         widget.resize(kb_width, kb_height)
         widget.move(0, sh - kb_height)
+        self.grid.set_size_request(kb_width, -1)
 
     def send_key(self, key):
         args = ["xdotool"]
