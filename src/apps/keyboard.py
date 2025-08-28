@@ -3,7 +3,7 @@ gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk, Gdk, GLib
 
 hLimit = 0.35     # Increased for better touch area
-wLimit = 0.80     # Good fit for most displays
+wLimit = 1.0     # Good fit for most displays
 
 _keyboard_window = None  # global reference for toggle
 
@@ -15,7 +15,6 @@ class VirtualKeyboard(Gtk.Window):
         self.set_resizable(False)
         self.set_accept_focus(False)
         self.set_default_geometry(-1, -1)
-        self.set_default_size(50, 350)
 
         self.shift = False
         self.ctrl = False
@@ -24,14 +23,15 @@ class VirtualKeyboard(Gtk.Window):
         # Main container
         self.vbox = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
         self.add(self.vbox)
-        self.vbox.set_size_request(20, 300)
+        self.vbox.set_hexpand(True)
+        self.vbox.set_vexpand(True)
 
         # Grid container for keys
         self.grid = Gtk.Grid()
         self.grid.set_column_homogeneous(True)
         self.grid.set_row_homogeneous(True)
-        self.grid.set_column_spacing(1)
-        self.grid.set_row_spacing(1)
+        self.grid.set_column_spacing(0)
+        self.grid.set_row_spacing(0)
         self.vbox.pack_start(self.grid, True, True, 0)
 
         # Define keyboard layout
@@ -75,7 +75,7 @@ class VirtualKeyboard(Gtk.Window):
 
 
     def on_size_allocate(self, widget, allocation):
-        """Positions the keyboard at the bottom-center of the work area after its size is set."""
+        """Dock keyboard full width at bottom of screen (Ubuntu Touch style)."""
         screen = Gdk.Screen.get_default()
         if not screen:
             return
@@ -86,13 +86,14 @@ class VirtualKeyboard(Gtk.Window):
         monitor = screen.get_monitor_at_window(win)
         work = screen.get_monitor_workarea(monitor)
 
-        # Calculate X to center the window horizontally within the workarea
-        x = work.x + (work.width - allocation.width) // 2
-        # Calculate Y to place the window at the very bottom of the workarea
+        # Always flush left (x = work.x)
+        x = work.x
+        # Always bottom of workarea
         y = work.y + work.height - allocation.height
-        # Move the window to the calculated position
-        widget.move(x, y)
 
+        # Expand to full workarea width
+        widget.resize(int(work.width - 50), 500) #int(allocation.height))
+        widget.move(x, y)
 
 
     def send_key(self, key):
