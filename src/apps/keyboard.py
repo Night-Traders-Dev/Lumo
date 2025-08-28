@@ -14,7 +14,6 @@ class VirtualKeyboard(Gtk.Window):
         self.set_decorated(False)
         self.set_resizable(False)
         self.set_accept_focus(False)
-#        self.set_border_width(10)
         self.set_default_geometry(-1, -1)
         self.set_default_size(50, 350)
 
@@ -25,6 +24,7 @@ class VirtualKeyboard(Gtk.Window):
         # Main container
         self.vbox = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
         self.add(self.vbox)
+        self.vbox.set_size_request(20, 300)
 
         # Grid container for keys
         self.grid = Gtk.Grid()
@@ -46,7 +46,6 @@ class VirtualKeyboard(Gtk.Window):
         if screen:
             self.connect("size-allocate", self.on_size_allocate)
             self.create_keys()
-#            self.position_keyboard()
         else:
             return 0
 
@@ -74,24 +73,6 @@ class VirtualKeyboard(Gtk.Window):
                     self.grid.attach(btn, col, r, 1, 1)
                     col += 1
 
-
-    def position_keyboard(self):
-        """Calculates the desired size of the keyboard based on the available work area."""
-        screen = Gdk.Screen.get_default()
-        if not screen:
-            return
-        win = self.get_window()
-        monitor = (screen.get_monitor_at_window(win)
-                   if win else screen.get_primary_monitor())
-
-        work = screen.get_monitor_workarea(monitor)
-
-        width = work.width
-        height = int(work.height * hLimit)
-
-#        self.resize(500, 30)
-#        self.set_size_request(500, 30)
-#        self.vbox.set_size_request(275, height)
 
     def on_size_allocate(self, widget, allocation):
         """Positions the keyboard at the bottom-center of the work area after its size is set."""
