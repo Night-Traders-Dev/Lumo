@@ -8,8 +8,8 @@ _keyboard_window = None
 
 # Screen geometry and sizing factors
 sw, sh = get_display_geo()
-HEIGHT_MULTIPLIER = 0.40   # taller for comfortable touch targets
-WIDTH_MULTIPLIER  = 0.80   # wide enough for full QWERTY without clipping
+HEIGHT_MULTIPLIER = 0.35
+WIDTH_MULTIPLIER  = 0.70
 
 class VirtualKeyboard(Gtk.Window):
     def __init__(self):
