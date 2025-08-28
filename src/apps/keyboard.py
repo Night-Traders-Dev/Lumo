@@ -12,28 +12,26 @@ class VirtualKeyboard(Gtk.Window):
         super().__init__(title="Virtual Keyboard")
         self.set_keep_above(True)
         self.set_decorated(False)
-        self.set_resizable(True)
+        self.set_resizable(False)
         self.set_accept_focus(False)
-        self.set_default_size(800, 300)
+#        self.set_border_width(10)
+        self.set_default_geometry(-1, -1)
+        self.set_default_size(50, 350)
 
         self.shift = False
         self.ctrl = False
         self.repeat_id = None  # for key repeat
 
         # Main container
-        self.vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        self.vbox = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
         self.add(self.vbox)
 
         # Grid container for keys
         self.grid = Gtk.Grid()
         self.grid.set_column_homogeneous(True)
         self.grid.set_row_homogeneous(True)
-        self.grid.set_column_spacing(2)
-        self.grid.set_row_spacing(2)
-        self.grid.set_hexpand(True)
-        self.grid.set_vexpand(True)
-        self.grid.set_margin_right(5)
-        self.grid.set_margin_left(5)
+        self.grid.set_column_spacing(1)
+        self.grid.set_row_spacing(1)
         self.vbox.pack_start(self.grid, True, True, 0)
 
         # Define keyboard layout
@@ -44,18 +42,13 @@ class VirtualKeyboard(Gtk.Window):
             ["Ctrl","Space","Enter"]
         ]
 
-        # Screen connections for adaptive sizing
         screen = Gdk.Screen.get_default()
         if screen:
             self.connect("size-allocate", self.on_size_allocate)
-            screen.connect("size-changed", lambda *_: self.position_keyboard())
-            screen.connect("monitors-changed", lambda *_: self.position_keyboard())
             self.create_keys()
-            self.position_keyboard()
+#            self.position_keyboard()
         else:
-            self.connect("size-allocate", self.on_size_allocate)
-            self.create_keys()
-            self.position_keyboard()
+            return 0
 
     def create_keys(self):
         """Create all key buttons dynamically with proper expansion"""
@@ -65,9 +58,6 @@ class VirtualKeyboard(Gtk.Window):
             col = 0
             for key in key_row:
                 btn = Gtk.Button(label=key)
-                btn.set_hexpand(True)
-                btn.set_vexpand(True)
-                btn.set_size_request(-1, -1)
                 btn.connect("pressed", self.on_key_pressed, key)
                 btn.connect("released", self.on_key_released)
 
@@ -94,15 +84,14 @@ class VirtualKeyboard(Gtk.Window):
         monitor = (screen.get_monitor_at_window(win)
                    if win else screen.get_primary_monitor())
 
-        # Use the workarea, which correctly excludes panels and docks
         work = screen.get_monitor_workarea(monitor)
 
-        # Set width to the full available work area width
         width = work.width
-        # Set height to a fraction of the work area height
-        height = int(work.height * hLimit) # hLimit = 0.35
+        height = int(work.height * hLimit)
 
-        self.resize(width, height)
+#        self.resize(500, 30)
+#        self.set_size_request(500, 30)
+#        self.vbox.set_size_request(275, height)
 
     def on_size_allocate(self, widget, allocation):
         """Positions the keyboard at the bottom-center of the work area after its size is set."""
