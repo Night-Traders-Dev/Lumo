@@ -11,7 +11,7 @@ class VirtualKeyboard(Gtk.Window):
     def __init__(self):
         super().__init__(title="Virtual Keyboard")
         self.set_keep_above(True)
-        self.set_decorated(True)
+        self.set_decorated(False)
         self.set_resizable(True)
         self.set_accept_focus(False)
         self.set_default_size(800, 300)
@@ -86,64 +86,44 @@ class VirtualKeyboard(Gtk.Window):
 
 
     def position_keyboard(self):
+        """Calculates the desired size of the keyboard based on the available work area."""
         screen = Gdk.Screen.get_default()
         if not screen:
             return
         win = self.get_window()
-        mon = (screen.get_monitor_at_window(win)
-               if win else screen.get_primary_monitor())
-        geo = screen.get_monitor_geometry(mon)
+        monitor = (screen.get_monitor_at_window(win)
+                   if win else screen.get_primary_monitor())
 
-        rows = len(self.keys_layout)
-        max_cols = max(
-            sum(4 if key == "Space" else 2 if key in ["Ctrl", "Enter", "Shift", "Backspace"] else 1
-               for key in row)
-            for row in self.keys_layout
-        )
+        # Use the workarea, which correctly excludes panels and docks
+        work = screen.get_monitor_workarea(monitor)
 
+        # Set width to the full available work area width
+        width = work.width
+        # Set height to a fraction of the work area height
+        height = int(work.height * hLimit) # hLimit = 0.35
 
-        # Calculate spacing overhead more accurately
-        total_row_spacing = (rows - 1) * self.grid.get_row_spacing()
-        total_col_spacing = (max_cols - 1) * self.grid.get_column_spacing()
-
-        # Account for margins we added
-        margin_overhead = self.grid.get_margin_left() + self.grid.get_margin_right()
-        margin_overhead += self.grid.get_margin_top() + self.grid.get_margin_bottom()
-
-        # More conservative width calculation
-        w = int(geo.width * wLimit) - total_col_spacing - margin_overhead - 20  # Extra 20px safety margin
-        h = int((geo.height * hLimit) - total_row_spacing - margin_overhead)
-
-        # Ensure we don't exceed screen bounds
-        w = min(w, geo.width - 60)  # Leave 40px total margin
-        h = min(h, geo.height - margin_overhead)
-
-        # Ensure minimum size
-        w = max(w, 400)
-        h = max(h, 200)
-
-        self.resize(w, h)
-        self.queue_resize()
-        GLib.idle_add(lambda: self.resize(*self.get_size()))
-
-
+        self.resize(width, height)
 
     def on_size_allocate(self, widget, allocation):
-        """Slide flush inside monitor after real size is set."""
+        """Positions the keyboard at the bottom-center of the work area after its size is set."""
         screen = Gdk.Screen.get_default()
         if not screen:
             return
         win = widget.get_window()
         if not win:
             return
-        mon = screen.get_monitor_at_window(win)
-        work = screen.get_monitor_workarea(mon)
 
-        x = work.x
+        monitor = screen.get_monitor_at_window(win)
+        work = screen.get_monitor_workarea(monitor)
+
+        # Calculate X to center the window horizontally within the workarea
+        x = work.x + (work.width - allocation.width) // 2
+        # Calculate Y to place the window at the very bottom of the workarea
         y = work.y + work.height - allocation.height
-        x = max(x, work.x)
-        y = max(y, work.y)
+        # Move the window to the calculated position
         widget.move(x, y)
+
+
 
     def send_key(self, key):
         args = ["xdotool"]
