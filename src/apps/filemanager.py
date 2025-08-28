@@ -38,6 +38,7 @@ class FileManager(Gtk.Window):
         vbox.pack_end(scrolled, True, True, 0)
 
         self.listbox = Gtk.ListBox()
+        self.listbox.connect("row-activated", self.on_row_activated)  # double-tap/double-click to open
         scrolled.add(self.listbox)
 
         # Populate initial directory
@@ -52,13 +53,18 @@ class FileManager(Gtk.Window):
         self.path_entry.set_text(path)
 
         try:
-            items = sorted(os.listdir(path), key=lambda x: (not os.path.isdir(os.path.join(path, x)), x.lower()))
+            items = sorted(
+                os.listdir(path),
+                key=lambda x: (not os.path.isdir(os.path.join(path, x)), x.lower())
+            )
         except PermissionError:
             items = []
 
         for item in items:
             full_path = os.path.join(path, item)
             row = Gtk.ListBoxRow()
+            row.full_path = full_path   # store path on row
+
             hbox = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
             icon = Gtk.Image.new_from_icon_name(
                 "folder" if os.path.isdir(full_path) else "text-x-generic",
@@ -69,15 +75,15 @@ class FileManager(Gtk.Window):
             hbox.pack_start(label, True, True, 0)
             row.add(hbox)
 
-            # Use touch/click instead of activate
-            row.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
-            row.connect("button-press-event", self.on_item_touched, full_path)
-
             self.listbox.add(row)
 
         self.listbox.show_all()
 
-    def on_item_touched(self, widget, event, full_path):
+    def on_row_activated(self, listbox, row):
+        """Triggered on double-tap/double-click"""
+        full_path = getattr(row, "full_path", None)
+        if not full_path:
+            return
         if os.path.isdir(full_path):
             self.populate_files(full_path)
         else:
@@ -91,14 +97,13 @@ class FileManager(Gtk.Window):
     def go_back(self, button):
         parent = os.path.dirname(self.current_path)
 
-        # If already at top-level ("/" or no parent), close the window
+        # If already at top-level, close window
         if not parent or parent == self.current_path or parent == "/":
             self.destroy()
             global _file_manager_window
             _file_manager_window = None
             return
 
-        # Otherwise navigate up
         if os.path.exists(parent):
             self.populate_files(parent)
 
