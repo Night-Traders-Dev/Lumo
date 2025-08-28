@@ -1,8 +1,11 @@
 import gi, subprocess
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk, Gdk, GLib
+from shell.utils import get_display_geo
+
 
 _keyboard_window = None  # global reference for toggle
+sw, sh = get_display_geo()
 
 class VirtualKeyboard(Gtk.Window):
     def __init__(self):
@@ -12,6 +15,7 @@ class VirtualKeyboard(Gtk.Window):
         self.set_resizable(False)
         self.set_accept_focus(False)
 
+
         self.shift = False
         self.ctrl = False
         self.repeat_id = None  # for key repeat
@@ -19,8 +23,6 @@ class VirtualKeyboard(Gtk.Window):
         # Main container
         self.vbox = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
         self.add(self.vbox)
-#        self.vbox.set_hexpand(True)
-#        self.vbox.set_vexpand(True)
 
         # Grid container for keys
         self.grid = Gtk.Grid()
@@ -67,29 +69,12 @@ class VirtualKeyboard(Gtk.Window):
                     col += 1
 
     def on_size_allocate(self, widget, allocation):
-        """Dock keyboard full width at bottom of screen (Ubuntu Touch style)."""
-        screen = Gdk.Screen.get_default()
-        if not screen:
-            return
-        win = widget.get_window()
-        if not win:
-            return
+        """Dock keyboard full width at bottom of screen."""
+        kb_height = int(sh * 0.35)  # 35% of screen height
+        kb_width = int(sw * 0.8)
+        widget.resize(kb_width, kb_height)
+        widget.move(0, sh - kb_height)
 
-        monitor = screen.get_monitor_at_window(win)
-        work = screen.get_monitor_workarea(monitor)
-
-        # Full width without going over edges
-        x = work.x
-        width = int(work.width * 0.12)
-
-        # Height = about 1/3 of screen (double what you had before)
-        height = int(work.height * 0.45)
-
-        # Dock to bottom
-        y = int(work.y + work.height - (height // 2))
-
-        widget.resize(1000, height)
-        widget.move(x, (y + 250))
 
     def send_key(self, key):
         args = ["xdotool"]
