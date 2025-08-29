@@ -32,7 +32,7 @@ class LumoTerminal(Gtk.Window):
         self.terminal.spawn_async(
             Vte.PtyFlags.DEFAULT,
             os.environ['HOME'],              # Working directory
-            ["/usr/bin/fish"],                   # Command
+            ["/usr/bin/fish"],               # Command
             [],                              # Env
             GLib.SpawnFlags.DEFAULT,
             None,                            # Child setup
@@ -43,6 +43,10 @@ class LumoTerminal(Gtk.Window):
         )
 
         # Close when shell exits (typing "exit")
+        self.terminal.connect("child-exited", self.on_blur)
+
+        self.connect("destroy", Gtk.main_quit)
+        self.show_all()
         self.terminal.connect("child-exited", self.on_child_exit)
 
         # Scrolled container
