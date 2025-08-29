@@ -61,6 +61,27 @@ def trigger_phone(host="127.0.0.1", port=12345):
 
 
 
+
+def trigger_messenger(host="127.0.0.1", port=12345):
+    """
+    Sends the command to open Facebook Messenger (am start -n com.facebook.orca/.auth.StartScreenActivity)
+    via a local TCP connection to Termux's netcat listener.
+
+    Args:
+        host (str): The host address to connect to (default: 127.0.0.1)
+        port (int): The port number where Termux listener is running (default: 12345)
+    """
+    tst = 'termux-toast "Opening Messenger"\n'
+    cmd = 'am start -n com.facebook.orca/.auth.StartScreenActivity\n'
+    try:
+        with socket.create_connection((host, port), timeout=5) as s:
+            s.sendall(tst.encode())
+            s.sendall(cmd.encode())
+            s.shutdown(socket.SHUT_WR)
+    except Exception as e:
+        print(f"Error triggering Messenger: {e}")
+
+
 def get_active_network():
     try:
         out = subprocess.check_output(
