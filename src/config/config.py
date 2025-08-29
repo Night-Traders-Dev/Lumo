@@ -1,7 +1,7 @@
 # UI settings & favorites
 
 from shell.utils import trigger_phone, trigger_messenger
-from apps import keyboard, filemanager, terminal
+from apps import keyboard, filemanager, terminal, settings
 
 FAVORITES = [
     {"name": "Phone",     "icon": "call-start",          "cmd": trigger_phone},
@@ -9,7 +9,8 @@ FAVORITES = [
     {"name": "Terminal",  "icon": "utilities-terminal",  "cmd": terminal.launch},
     {"name": "Files",     "icon": "system-file-manager", "cmd": filemanager.launch},
     {"name": "Browser",   "icon": "web-browser",         "cmd": "firefox"},
-    {"name": "Keyboard",  "icon": "input-keyboard",      "cmd": keyboard.launch}
+    {"name": "Keyboard",  "icon": "input-keyboard",      "cmd": keyboard.launch},
+    {"name": "Settings", "icon": "preferences-system", "cmd": settings.launch}
 ]
 
 

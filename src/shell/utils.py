@@ -181,3 +181,63 @@ def get_packages(host="127.0.0.1", port=12345):
         print("Error parsing package list:", e)
         print("Raw response:", data.decode(errors="ignore"))
         return []
+
+
+def set_volume(level, host="127.0.0.1", port=12345):
+    """
+    Sets media volume using termux-volume.
+    Level: integer (0–15 on most devices).
+    """
+    cmd = f"termux-volume music {level}\n"
+    try:
+        with socket.create_connection((host, port), timeout=5) as s:
+            s.sendall(cmd.encode())
+            s.shutdown(socket.SHUT_WR)
+    except Exception as e:
+        print(f"Error setting volume: {e}")
+
+
+def get_volume(host="127.0.0.1", port=12345):
+    """
+    Gets current media volume level via termux-volume.
+    Returns dict {stream, volume, max_volume}.
+    """
+    cmd = "termux-volume\n"
+    data = b""
+    try:
+        with socket.create_connection((host, port), timeout=5) as s:
+            s.sendall(cmd.encode())
+            s.shutdown(socket.SHUT_WR)
+            s.settimeout(2)
+            while True:
+                try:
+                    chunk = s.recv(4096)
+                    if not chunk:
+                        break
+                    data += chunk
+                except socket.timeout:
+                    break
+    except Exception as e:
+        print(f"Error getting volume: {e}")
+        return None
+
+    try:
+        info = json.loads(data.decode().strip())
+        return info
+    except Exception as e:
+        print("Error parsing volume info:", e)
+        return None
+
+
+def set_brightness(percent, host="127.0.0.1", port=12345):
+    """
+    Sets brightness using termux-brightness.
+    Percent: 0–255.
+    """
+    cmd = f"termux-brightness {percent}\n"
+    try:
+        with socket.create_connection((host, port), timeout=5) as s:
+            s.sendall(cmd.encode())
+            s.shutdown(socket.SHUT_WR)
+    except Exception as e:
+        print(f"Error setting brightness: {e}")
