@@ -1,7 +1,7 @@
 # UI settings & favorites
 
 from shell.utils import trigger_phone, trigger_messenger
-from apps import keyboard, filemanager, terminal, settings
+from apps import keyboard, filemanager, terminal, settings, lumoide
 
 FAVORITES = [
     {"name": "Phone",     "icon": "call-start",          "cmd": trigger_phone},
@@ -10,7 +10,8 @@ FAVORITES = [
     {"name": "Files",     "icon": "system-file-manager", "cmd": filemanager.launch},
     {"name": "Browser",   "icon": "web-browser",         "cmd": "firefox"},
     {"name": "Keyboard",  "icon": "input-keyboard",      "cmd": keyboard.launch},
-    {"name": "Settings", "icon": "preferences-system", "cmd": settings.launch}
+    {"name": "Settings",  "icon": "preferences-system",  "cmd": settings.launch},
+    {"name": "LumoIDE",   "icon": "accessories-text-editor", "cmd": lumoide.launch}
 ]
 
 
