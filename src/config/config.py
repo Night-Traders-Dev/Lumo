@@ -1,12 +1,12 @@
 # UI settings & favorites
 
 from shell.utils import trigger_phone, trigger_messenger
-from apps import keyboard, filemanager
+from apps import keyboard, filemanager, terminal
 
 FAVORITES = [
     {"name": "Phone",     "icon": "call-start",          "cmd": trigger_phone},
     {"name": "Messenger", "icon": "chat",                "cmd": trigger_messenger},
-    {"name": "Terminal",  "icon": "utilities-terminal",  "cmd": "xfce4-terminal"},
+    {"name": "Terminal",  "icon": "utilities-terminal",  "cmd": terminal.launch},
     {"name": "Files",     "icon": "system-file-manager", "cmd": filemanager.launch},
     {"name": "Browser",   "icon": "web-browser",         "cmd": "firefox"},
     {"name": "Keyboard",  "icon": "input-keyboard",      "cmd": keyboard.launch}
