@@ -48,11 +48,10 @@ class NotesApp(Gtk.Window):
         vbox.pack_start(scrolled, True, True, 0)
 
     def on_close_clicked(self, button):
+        if keyboard._keyboard_window:
+            keyboard._keyboard_window.hide()
         self.destroy()
 
-    def on_child_exit(self, *args):
-        """Close the terminal when the shell exits (e.g., user types 'exit')."""
-        self.destroy()
 
     def on_focus(self, *args):
         keyboard.launch()
