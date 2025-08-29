@@ -1,10 +1,8 @@
 # Lumo/src/windows/app_drawer.py
 from gi.repository import Gtk, GLib, Gdk
 from config.config import *
-from shell.utils import get_display_geo, discover_apps, exec_cmd
+from shell.utils import get_display_geo, discover_apps, exec_cmd, get_packages
 from styles.styles import load_css
-
-
 
 class AppDrawer(Gtk.Window):
     def __init__(self, shell):
@@ -27,39 +25,69 @@ class AppDrawer(Gtk.Window):
         self.anim_closed_x = -self.width
         self.move(self.anim_closed_x, PANEL_HEIGHT)
 
-        # === Scroll container (touch-friendly) ===
-        self.sc = Gtk.ScrolledWindow()
-        self.sc.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-        self.sc.set_kinetic_scrolling(True)
-        self.sc.set_capture_button_press(True)
-        self.sc.set_overlay_scrolling(True)
-        self.add(self.sc)
+        # Notebook for multiple pages
+        self.notebook = Gtk.Notebook()
+        self.add(self.notebook)
 
-        # === Grid of apps ===
-        self.grid = Gtk.Grid()
-        self.grid.set_row_spacing(16)
-        self.grid.set_column_spacing(18)
-        self.grid.set_margin_top(16)
-        self.grid.set_margin_bottom(16)
-        self.grid.set_margin_start(16)
-        self.grid.set_margin_end(16)
-        self.sc.add(self.grid)
+        # --- Pages ---
+        self.lumo_grid = self._create_scroll_grid()
+        self.linux_grid = self._create_scroll_grid()
+        self.android_grid = self._create_scroll_grid()
 
-        # === Gestures ===
-        swipe = Gtk.GestureSwipe.new(self)
-        swipe.connect("swipe", self.on_swipe)
+        self.notebook.append_page(self.lumo_grid["scrolled_window"], Gtk.Label(label="Lumo Apps"))
+        self.notebook.append_page(self.linux_grid["scrolled_window"], Gtk.Label(label="Linux Apps"))
+        self.notebook.append_page(self.android_grid["scrolled_window"], Gtk.Label(label="Android Apps"))
 
-        drag = Gtk.GestureDrag.new(self.sc)
-        drag.connect("drag-update", self.on_drag_update)
-        drag.connect("drag-end", self.on_drag_end)
-        self.drag_last_y = 0
+        self.populate_lumo_apps()
+        self.populate_linux_apps()
+        self.populate_android_apps()
 
-        self.populate()
         self.hide()
-
         self.anim_id = None
 
-    def populate(self):
+    def _create_scroll_grid(self):
+        sc = Gtk.ScrolledWindow()
+        sc.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        sc.set_kinetic_scrolling(True)
+        sc.set_capture_button_press(True)
+        sc.set_overlay_scrolling(True)
+
+        grid = Gtk.Grid()
+        grid.set_row_spacing(16)
+        grid.set_column_spacing(18)
+        grid.set_margin_top(16)
+        grid.set_margin_bottom(16)
+        grid.set_margin_start(16)
+        grid.set_margin_end(16)
+        sc.add(grid)
+
+        return {"scrolled_window": sc, "grid": grid}
+
+    def populate_lumo_apps(self):
+        # Lumo apps: just pick from FAVORITES that are local
+        apps_per_row = 4
+        r = c = 0
+        for app in FAVORITES:
+            btn = Gtk.Button()
+            vb = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+            img = Gtk.Image.new_from_icon_name(app["icon"], Gtk.IconSize.DIALOG)
+            lbl = Gtk.Label(label=app["name"])
+            lbl.set_ellipsize(3)
+            lbl.set_lines(2)
+            lbl.set_justify(Gtk.Justification.CENTER)
+            lbl.get_style_context().add_class("app-label")
+            vb.pack_start(img, True, True, 0)
+            vb.pack_start(lbl, False, False, 0)
+            btn.add(vb)
+            btn.connect("clicked", self.launch, app["cmd"])
+            self.lumo_grid["grid"].attach(btn, c, r, 1, 1)
+            c += 1
+            if c >= apps_per_row:
+                c = 0
+                r += 1
+        self.lumo_grid["grid"].show_all()
+
+    def populate_linux_apps(self):
         apps = discover_apps()
         apps_per_row = 4
         r = c = 0
@@ -68,7 +96,7 @@ class AppDrawer(Gtk.Window):
             vb = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
             img = Gtk.Image.new_from_icon_name(app["icon"], Gtk.IconSize.DIALOG)
             lbl = Gtk.Label(label=app["name"])
-            lbl.set_ellipsize(3)  # Pango.EllipsizeMode.END (numeric fallback)
+            lbl.set_ellipsize(3)
             lbl.set_lines(2)
             lbl.set_justify(Gtk.Justification.CENTER)
             lbl.get_style_context().add_class("app-label")
@@ -76,12 +104,36 @@ class AppDrawer(Gtk.Window):
             vb.pack_start(lbl, False, False, 0)
             btn.add(vb)
             btn.connect("clicked", self.launch, app["cmd"])
-            self.grid.attach(btn, c, r, 1, 1)
+            self.linux_grid["grid"].attach(btn, c, r, 1, 1)
             c += 1
             if c >= apps_per_row:
                 c = 0
                 r += 1
-        self.show_all()
+        self.linux_grid["grid"].show_all()
+
+    def populate_android_apps(self):
+        apps = get_packages()  # List of installed Android packages
+        apps_per_row = 4
+        r = c = 0
+        for pkg in apps:
+            btn = Gtk.Button()
+            vb = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+            lbl = Gtk.Label(label=pkg)
+            lbl.set_ellipsize(3)
+            lbl.set_lines(2)
+            lbl.set_justify(Gtk.Justification.CENTER)
+            lbl.get_style_context().add_class("app-label")
+            vb.pack_start(lbl, True, True, 0)
+            btn.add(vb)
+            # Use Termux am start if possible
+            cmd = f"am start -n {pkg}/.MainActivity"
+            btn.connect("clicked", self.launch, cmd)
+            self.android_grid["grid"].attach(btn, c, r, 1, 1)
+            c += 1
+            if c >= apps_per_row:
+                c = 0
+                r += 1
+        self.android_grid["grid"].show_all()
 
     def launch(self, _btn, cmd):
         exec_cmd(cmd)
@@ -89,12 +141,12 @@ class AppDrawer(Gtk.Window):
 
     # === Touch Gestures ===
     def on_swipe(self, _gesture, velocity_x, _velocity_y):
-        if velocity_x < -100:  # swipe left to close
+        if velocity_x < -100:
             self.shell.toggle(close_only=True)
 
     def on_drag_update(self, gesture, offset_x, offset_y):
-        adj = self.sc.get_vadjustment()
-        new_value = adj.get_value() - (offset_y - self.drag_last_y)
+        adj = self.notebook.get_vadjustment()
+        new_value = adj.get_value() - (offset_y - getattr(self, "drag_last_y", 0))
         self.drag_last_y = offset_y
         adj.set_value(max(0, min(new_value, adj.get_upper() - adj.get_page_size())))
 
@@ -111,7 +163,7 @@ class AppDrawer(Gtk.Window):
         self._start_anim(opening=False)
 
     def _start_anim(self, opening=True, duration_ms=160):
-        if self.anim_id:
+        if hasattr(self, "anim_id") and self.anim_id:
             GLib.source_remove(self.anim_id)
         start = GLib.get_monotonic_time()
         start_x, end_x = (self.anim_closed_x, self.anim_open_x) if opening else (self.anim_open_x, self.anim_closed_x)
@@ -119,12 +171,11 @@ class AppDrawer(Gtk.Window):
         def step():
             now = GLib.get_monotonic_time()
             t = min(1.0, (now - start) / (duration_ms * 1000.0))
-            tt = 1 - (1 - t) * (1 - t)  # ease-out
+            tt = 1 - (1 - t) * (1 - t)
             x = int(start_x + (end_x - start_x) * tt)
             self.move(x, PANEL_HEIGHT)
-            if t >= 1.0:
-                if not opening:
-                    self.hide()
+            if t >= 1.0 and not opening:
+                self.hide()
                 return False
             return True
 
