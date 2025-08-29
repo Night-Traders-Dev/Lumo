@@ -50,6 +50,25 @@ class LeftFavorites(Gtk.Window):
             btn.connect("clicked", self._launch_and_hide, app["cmd"])
             vb.pack_start(btn, False, False, 2)
 
+        # Spacer pushes drawer button to bottom
+        vb.pack_start(Gtk.Box(), True, True, 0)
+
+        # App Drawer button
+        drawer_btn = Gtk.Button()
+        drawer_col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        drawer_img = Gtk.Image.new_from_icon_name("view-grid-symbolic", Gtk.IconSize.DIALOG)
+        drawer_lbl = Gtk.Label(label="Apps")
+        drawer_lbl.set_xalign(0.5)
+        drawer_lbl.set_justify(Gtk.Justification.CENTER)
+        drawer_lbl.get_style_context().add_class("app-label")
+        drawer_col.pack_start(drawer_img, True, True, 0)
+        drawer_col.pack_start(drawer_lbl, False, False, 0)
+        drawer_btn.add(drawer_col)
+
+        # Connect to app drawer toggle
+        drawer_btn.connect("clicked", lambda *_: self.shell.toggle_app_drawer())
+        vb.pack_start(drawer_btn, False, False, 2)
+
         # Gesture swipe
         swipe = Gtk.GestureSwipe.new(self)
         swipe.connect("swipe", self.on_swipe)

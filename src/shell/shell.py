@@ -19,6 +19,10 @@ class TouchShell:
                 self.toggle_favorites(close_only=True)
             self.drawer.slide_in()
 
+    def toggle_app_drawer(self, close_only=False):
+        """Explicit toggle for AppDrawer (alias for toggle)."""
+        self.toggle(close_only=close_only)
+
     def toggle_favorites(self, close_only=False):
         if self.favorites.is_visible() or close_only:
             self.favorites.slide_out()
@@ -37,4 +41,3 @@ class TouchShell:
     def close_favorites(self):
         if self.favorites.is_visible():
             self.favorites.slide_out()
-
