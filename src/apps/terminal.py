@@ -2,7 +2,7 @@ import gi, os
 gi.require_version("Gtk", "3.0")
 gi.require_version("Vte", "2.91")
 from gi.repository import Gtk, Vte, GLib, Gdk, Pango
-from apps import keyboard
+from apps import keyboard, util
 
 class LumoTerminal(Gtk.Window):
     def __init__(self):
@@ -65,29 +65,20 @@ class LumoTerminal(Gtk.Window):
         self.connect("destroy", Gtk.main_quit)
         self.show_all()
 
-    def shrink_for_keyboard(self):
-        """Shrink window height by 25% from the bottom (keep top fixed)."""
-        shrink_h = int(self.original_h * 0.75)
-        # keep same y (top edge), just reduce height
-        self.move(self.original_x, self.original_y)  
-        self.resize(self.original_w, shrink_h)
-
-    def restore_size(self):
-        """Restore original geometry."""
-        self.move(self.original_x, self.original_y)
-        self.resize(self.original_w, self.original_h)
 
     def on_child_exit(self, *args):
+        keyboard._keyboard_window.hide()
         self.destroy()
 
     def on_focus(self, *args):
         keyboard.launch()
-        self.shrink_for_keyboard()
+        util.animate_shrink_for_keyboard(self, shrink_ratio=0.25, duration=300)
 
     def on_blur(self, *args):
         if keyboard._keyboard_window:
+            util.animate_restore_size(self, duration=300)
             keyboard._keyboard_window.hide()
-        self.restore_size()
+
 
 def launch():
     win = LumoTerminal()
