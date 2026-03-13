@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Lumo Launcher</string>
+    <string name="launch_failed_message">Could not open that app.</string>
+</resources>
+

@@ -2,6 +2,8 @@
 
 Lumo is a lightweight, GTK-based desktop environment for Linux designed to provide a mobile-friendly, touch-optimized interface. It includes a launcher, favorites bar, virtual keyboard, file manager, panel, and other essential desktop utilities — focused on small screens, touch devices, and minimal resource usage.
 
+The repository now also includes a native Android launcher port in [`android-launcher/`](android-launcher/). The GTK code under [`src/`](src/) remains the original reference prototype; the new Android code is the path forward for a Lomiri-inspired launcher experience on Android.
+
 ---
 
 ## What’s New (recent updates)
@@ -162,4 +164,3 @@ MIT License — see `LICENSE` for details.
 
 * Optimized for mobile touchscreens but fully usable with keyboard and mouse.
 * Known working environments: Ubuntu, Termux + proot Ubuntu. Other Linux distros with GTK 3 are likely compatible.
-
