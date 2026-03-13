@@ -12,6 +12,9 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.runtime.getValue
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.nighttraders.lumo.launcher.ui.LumoLauncherApp
 import dev.nighttraders.lumo.launcher.ui.LauncherViewModel
@@ -29,6 +32,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        configureSystemBars()
         refreshDefaultHomeState()
 
         setContent {
@@ -61,6 +65,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        configureSystemBars()
         refreshDefaultHomeState()
         viewModel.refreshApps()
     }
@@ -79,5 +84,13 @@ class MainActivity : ComponentActivity() {
         }
 
         startActivity(Intent(Settings.ACTION_HOME_SETTINGS))
+    }
+
+    private fun configureSystemBars() {
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        WindowInsetsControllerCompat(window, window.decorView).apply {
+            hide(WindowInsetsCompat.Type.systemBars())
+            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        }
     }
 }

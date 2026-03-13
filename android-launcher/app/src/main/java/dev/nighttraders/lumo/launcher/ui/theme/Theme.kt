@@ -5,10 +5,10 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 
 private val LumoColorScheme = darkColorScheme(
-    primary = Mist,
-    onPrimary = InkBlack,
+    primary = Ember,
+    onPrimary = Mist,
     secondary = Ember,
-    onSecondary = InkBlack,
+    onSecondary = Mist,
     background = InkBlack,
     onBackground = Mist,
     surface = NightPlum,
@@ -25,4 +25,3 @@ fun LumoLauncherTheme(content: @Composable () -> Unit) {
         content = content,
     )
 }
-

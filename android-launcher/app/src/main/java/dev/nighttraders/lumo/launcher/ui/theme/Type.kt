@@ -8,35 +8,35 @@ import androidx.compose.ui.unit.sp
 
 val LumoTypography = Typography(
     headlineSmall = TextStyle(
-        fontFamily = FontFamily.Serif,
-        fontWeight = FontWeight.SemiBold,
-        fontSize = 30.sp,
-        lineHeight = 34.sp,
-        letterSpacing = (-0.3).sp,
+        fontFamily = FontFamily.SansSerif,
+        fontWeight = FontWeight.Medium,
+        fontSize = 28.sp,
+        lineHeight = 32.sp,
+        letterSpacing = 0.sp,
     ),
     titleMedium = TextStyle(
         fontFamily = FontFamily.SansSerif,
         fontWeight = FontWeight.Medium,
-        fontSize = 18.sp,
-        lineHeight = 24.sp,
+        fontSize = 17.sp,
+        lineHeight = 22.sp,
     ),
     titleSmall = TextStyle(
         fontFamily = FontFamily.SansSerif,
         fontWeight = FontWeight.Medium,
-        fontSize = 15.sp,
-        lineHeight = 20.sp,
+        fontSize = 14.sp,
+        lineHeight = 18.sp,
     ),
     bodyLarge = TextStyle(
         fontFamily = FontFamily.SansSerif,
         fontWeight = FontWeight.Normal,
-        fontSize = 16.sp,
-        lineHeight = 22.sp,
+        fontSize = 15.sp,
+        lineHeight = 20.sp,
     ),
     bodyMedium = TextStyle(
         fontFamily = FontFamily.SansSerif,
         fontWeight = FontWeight.Normal,
-        fontSize = 14.sp,
-        lineHeight = 20.sp,
+        fontSize = 13.sp,
+        lineHeight = 18.sp,
     ),
     bodySmall = TextStyle(
         fontFamily = FontFamily.SansSerif,
@@ -47,7 +47,7 @@ val LumoTypography = Typography(
     labelLarge = TextStyle(
         fontFamily = FontFamily.SansSerif,
         fontWeight = FontWeight.SemiBold,
-        fontSize = 13.sp,
+        fontSize = 12.sp,
         lineHeight = 16.sp,
         letterSpacing = 0.3.sp,
     ),
@@ -64,4 +64,3 @@ val LumoTypography = Typography(
         lineHeight = 14.sp,
     ),
 )
-

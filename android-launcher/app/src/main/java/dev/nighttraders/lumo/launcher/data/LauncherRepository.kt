@@ -44,6 +44,10 @@ class LauncherRepository(private val context: Context) {
                     icon = info.getBadgedIcon(context.resources.displayMetrics.densityDpi)
                         ?.toBitmap(width = iconSizePx, height = iconSizePx),
                     accentSeed = info.componentName.packageName.hashCode(),
+                    category = inferAppCategory(
+                        packageName = info.componentName.packageName,
+                        label = info.label?.toString().orEmpty(),
+                    ),
                 )
             }
             .orEmpty()
@@ -142,6 +146,10 @@ class LauncherRepository(private val context: Context) {
                     height = iconSizePx,
                 ),
                 accentSeed = activityInfo.packageName.hashCode(),
+                category = inferAppCategory(
+                    packageName = activityInfo.packageName,
+                    label = resolveInfo.loadLabel(packageManager)?.toString().orEmpty(),
+                ),
             )
         }
     }
@@ -182,4 +190,3 @@ class LauncherRepository(private val context: Context) {
         )
     }
 }
-

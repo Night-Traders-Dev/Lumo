@@ -7,9 +7,10 @@ This directory contains the native Android launcher port of Lumo. It keeps the L
 - Home-screen activity with `HOME` and `DEFAULT` intent filters
 - Request flow for Android's Home role
 - App discovery via launcher activities, not Linux `.desktop` files
-- Searchable app library
-- Persistent favorites rail backed by DataStore
-- Live header with time, battery, and network status
+- Scopes-style home surface with category shelves and quick launch cards
+- Searchable app library with category filters
+- Edge-expanding favorites rail backed by DataStore
+- Live header with time, battery, network, and an indicators panel
 
 ## Requirements
 
@@ -52,4 +53,3 @@ These Linux-only prototype features were not copied into the launcher MVP:
 - Termux shell bridge
 - Desktop file manager behavior
 - Shell-command-based launchers
-

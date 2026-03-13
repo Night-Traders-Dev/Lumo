@@ -16,12 +16,14 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
+import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 data class SystemStatusSnapshot(
     val timeLabel: String,
+    val dateLabel: String,
     val networkLabel: String,
     val batteryPercent: Int?,
 )
@@ -96,6 +98,7 @@ private fun readSystemStatus(context: Context): SystemStatusSnapshot {
     val batteryIntent = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
     val batteryLevel = batteryIntent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)?.takeIf { it >= 0 }
     val timeLabel = LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm", Locale.getDefault()))
+    val dateLabel = LocalDate.now().format(DateTimeFormatter.ofPattern("EEE, MMM d", Locale.getDefault()))
 
     val connectivityManager = context.getSystemService(ConnectivityManager::class.java)
     val networkLabel = connectivityManager?.activeNetwork
@@ -112,6 +115,7 @@ private fun readSystemStatus(context: Context): SystemStatusSnapshot {
 
     return SystemStatusSnapshot(
         timeLabel = timeLabel,
+        dateLabel = dateLabel,
         networkLabel = networkLabel,
         batteryPercent = batteryLevel,
     )
