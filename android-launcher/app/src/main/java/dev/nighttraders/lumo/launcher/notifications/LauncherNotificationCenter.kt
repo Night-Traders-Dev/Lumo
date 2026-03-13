@@ -1,0 +1,61 @@
+package dev.nighttraders.lumo.launcher.notifications
+
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+
+object LauncherNotificationCenter {
+    private const val MAX_NOTIFICATIONS = 20
+
+    private val _notifications = MutableStateFlow<List<LauncherNotification>>(emptyList())
+    val notifications = _notifications.asStateFlow()
+
+    private val _headsUpNotification = MutableStateFlow<LauncherNotification?>(null)
+    val headsUpNotification = _headsUpNotification.asStateFlow()
+
+    private val _hasAccess = MutableStateFlow(false)
+    val hasAccess = _hasAccess.asStateFlow()
+
+    fun setAccessEnabled(enabled: Boolean) {
+        _hasAccess.value = enabled
+        if (!enabled) {
+            _notifications.value = emptyList()
+            _headsUpNotification.value = null
+        }
+    }
+
+    fun replaceAll(notifications: List<LauncherNotification>) {
+        _notifications.value = notifications
+            .sortedByDescending { it.postedAt }
+            .take(MAX_NOTIFICATIONS)
+    }
+
+    fun upsert(notification: LauncherNotification, alert: Boolean) {
+        _notifications.update { existing ->
+            buildList {
+                add(notification)
+                addAll(existing.filterNot { it.key == notification.key })
+            }.sortedByDescending { it.postedAt }
+                .take(MAX_NOTIFICATIONS)
+        }
+
+        if (alert) {
+            _headsUpNotification.value = notification
+        }
+    }
+
+    fun remove(key: String) {
+        _notifications.update { existing ->
+            existing.filterNot { it.key == key }
+        }
+        if (_headsUpNotification.value?.key == key) {
+            _headsUpNotification.value = null
+        }
+    }
+
+    fun dismissHeadsUp(key: String) {
+        if (_headsUpNotification.value?.key == key) {
+            _headsUpNotification.value = null
+        }
+    }
+}

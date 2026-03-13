@@ -2,6 +2,7 @@ package dev.nighttraders.lumo.launcher.ui
 
 import dev.nighttraders.lumo.launcher.data.AppCategory
 import dev.nighttraders.lumo.launcher.data.LaunchableApp
+import dev.nighttraders.lumo.launcher.notifications.LauncherNotification
 
 data class AppShelf(
     val category: AppCategory,
@@ -12,12 +13,21 @@ data class LauncherUiState(
     val isLoading: Boolean = true,
     val apps: List<LaunchableApp> = emptyList(),
     val favoriteKeys: Set<String> = emptySet(),
+    val notifications: List<LauncherNotification> = emptyList(),
+    val headsUpNotification: LauncherNotification? = null,
+    val hasNotificationAccess: Boolean = false,
 ) {
     val favorites: List<LaunchableApp>
         get() = apps.filter { app -> favoriteKeys.contains(app.componentKey) }
 
     val featuredApps: List<LaunchableApp>
         get() = favorites.ifEmpty { apps.take(5) }.take(5)
+
+    val activeNotificationCount: Int
+        get() = notifications.size
+
+    val recentNotifications: List<LauncherNotification>
+        get() = notifications.take(5)
 
     val quickActions: List<LaunchableApp>
         get() {

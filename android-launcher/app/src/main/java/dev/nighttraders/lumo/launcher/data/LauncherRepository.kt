@@ -12,6 +12,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import java.util.Locale
@@ -27,6 +28,11 @@ class LauncherRepository(private val context: Context) {
     fun observeFavoriteKeys(): Flow<Set<String>> =
         context.launcherPreferences.data.map { preferences ->
             preferences[LauncherPreferences.favoriteComponents].orEmpty()
+        }
+
+    fun observeOverlaySidebarEnabled(): Flow<Boolean> =
+        context.launcherPreferences.data.map { preferences ->
+            preferences[LauncherPreferences.overlaySidebarEnabled] ?: false
         }
 
     suspend fun loadApps(): List<LaunchableApp> = withContext(Dispatchers.IO) {
@@ -63,6 +69,18 @@ class LauncherRepository(private val context: Context) {
             .sortedBy { it.label.lowercase(Locale.getDefault()) }
     }
 
+    suspend fun loadRailApps(limit: Int = 6): List<LaunchableApp> {
+        val installedApps = loadApps()
+        val favoriteKeys = observeFavoriteKeys().first()
+        val preferredKeys = favoriteKeys.ifEmpty { chooseInitialFavorites(installedApps) }
+
+        val favorites = installedApps.filter { app ->
+            preferredKeys.contains(app.componentKey)
+        }
+
+        return favorites.ifEmpty { installedApps.take(limit) }.take(limit)
+    }
+
     suspend fun seedFavoritesIfEmpty(apps: List<LaunchableApp>) {
         context.launcherPreferences.edit { preferences ->
             val existing = preferences[LauncherPreferences.favoriteComponents].orEmpty()
@@ -87,6 +105,15 @@ class LauncherRepository(private val context: Context) {
         }
     }
 
+    suspend fun isOverlaySidebarEnabled(): Boolean =
+        context.launcherPreferences.data.first()[LauncherPreferences.overlaySidebarEnabled] ?: false
+
+    suspend fun setOverlaySidebarEnabled(enabled: Boolean) {
+        context.launcherPreferences.edit { preferences ->
+            preferences[LauncherPreferences.overlaySidebarEnabled] = enabled
+        }
+    }
+
     fun launchApp(app: LaunchableApp): Result<Unit> {
         val componentName = ComponentName(app.packageName, app.className)
 
@@ -104,6 +131,37 @@ class LauncherRepository(private val context: Context) {
                 .setComponent(componentName)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
             context.startActivity(intent)
+        }
+    }
+
+    fun launchPackage(packageName: String): Result<Unit> {
+        launcherApps
+            ?.getActivityList(packageName, Process.myUserHandle())
+            ?.firstOrNull()
+            ?.let { info ->
+                return launchApp(
+                    LaunchableApp(
+                        componentKey = info.componentName.flattenToShortString(),
+                        packageName = info.componentName.packageName,
+                        className = info.componentName.className,
+                        label = info.label?.toString().orEmpty(),
+                        icon = null,
+                        accentSeed = info.componentName.packageName.hashCode(),
+                        category = inferAppCategory(
+                            packageName = info.componentName.packageName,
+                            label = info.label?.toString().orEmpty(),
+                        ),
+                    ),
+                )
+            }
+
+        val intent = packageManager.getLaunchIntentForPackage(packageName)
+            ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
+
+        return if (intent != null) {
+            runCatching { context.startActivity(intent) }
+        } else {
+            Result.failure(IllegalArgumentException("No launchable activity found for $packageName"))
         }
     }
 

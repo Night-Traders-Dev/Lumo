@@ -1,5 +1,13 @@
 <resources>
     <string name="app_name">Lumo Launcher</string>
+    <string name="settings_app_name">Lumo System</string>
+    <string name="lock_screen_name">Lumo Lock Screen</string>
     <string name="launch_failed_message">Could not open that app.</string>
+    <string name="notification_open_failed_message">Could not open that notification.</string>
+    <string name="notification_app_open_failed_message">Could not open that app.</string>
+    <string name="notification_dismiss_failed_message">Could not dismiss that notification.</string>
+    <string name="notification_snooze_failed_message">Could not snooze that notification.</string>
+    <string name="notification_listener_label">Lumo Notifications</string>
+    <string name="lumo_keyboard_label">Lumo Keyboard</string>
+    <string name="gesture_sidebar_label">Lumo Gesture Sidebar</string>
 </resources>
-
