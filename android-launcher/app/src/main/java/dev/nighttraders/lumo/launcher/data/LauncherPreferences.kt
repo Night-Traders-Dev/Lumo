@@ -19,17 +19,16 @@ internal object LauncherPreferences {
     val appIconSizeDp = intPreferencesKey("app_icon_size_dp")             // default 56
     val appGridColumns = intPreferencesKey("app_grid_columns")             // default 4
     val dashRailWidthDp = intPreferencesKey("dash_rail_width_dp")          // default 68
+    val dashIconSizeDp = intPreferencesKey("dash_icon_size_dp")           // default 52
+    val wallpaperPath = stringPreferencesKey("wallpaper_path")            // "" = gradient, "asset:X" or file URI
 
     // Gestures — toggles
-    val backGestureEnabled = booleanPreferencesKey("back_gesture_enabled")
     val bottomEdgeGestureEnabled = booleanPreferencesKey("bottom_edge_gesture_enabled")
     val leftEdgeGestureEnabled = booleanPreferencesKey("left_edge_gesture_enabled")
     val multitaskGestureEnabled = booleanPreferencesKey("multitask_gesture_enabled")
     val indicatorSwipeEnabled = booleanPreferencesKey("indicator_swipe_enabled")
 
     // Gestures — sensitivity / dimensions
-    val backGestureWidthDp = intPreferencesKey("back_gesture_width_dp")        // default 20
-    val backGestureThresholdDp = intPreferencesKey("back_gesture_threshold_dp") // default 40
     val bottomEdgeHeightDp = intPreferencesKey("bottom_edge_height_dp")        // default 70
     val bottomEdgeThresholdDp = intPreferencesKey("bottom_edge_threshold_dp")  // default 42
     val leftEdgeWidthDp = intPreferencesKey("left_edge_width_dp")              // default 20

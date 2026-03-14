@@ -1,9 +1,9 @@
-package dev.nighttraders.lumo.launcher
+package dev.nighttraders.lumo.launcher.lockscreen
 
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import dev.nighttraders.lumo.launcher.lockscreen.LumoLockState
+import dev.nighttraders.lumo.launcher.MainActivity
 
 /**
  * Listens for screen-off events and launches the Lumo lock screen

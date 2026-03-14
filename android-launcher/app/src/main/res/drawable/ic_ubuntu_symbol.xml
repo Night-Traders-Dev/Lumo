@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Ubuntu Circle of Friends symbol (filled paths only, no stroke) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+
+    <!-- Ring (donut): outer circle r=12.5, inner circle r=9.5, center 24,24 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M24,11.5 A12.5,12.5 0,1 1,24 36.5 A12.5,12.5 0,1 1,24 11.5z M24,14.5 A9.5,9.5 0,1 0,24 33.5 A9.5,9.5 0,1 0,24 14.5z" />
+
+    <!-- Top friend (head) at 12 o'clock -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M24,8.5 A3.5,3.5 0,1 1,24 15.5 A3.5,3.5 0,1 1,24 8.5z" />
+
+    <!-- Bottom-left friend (head) at ~7:30 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M14.17,27.5 A3.5,3.5 0,1 1,14.17 34.5 A3.5,3.5 0,1 1,14.17 27.5z" />
+
+    <!-- Bottom-right friend (head) at ~4:30 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M33.83,27.5 A3.5,3.5 0,1 1,33.83 34.5 A3.5,3.5 0,1 1,33.83 27.5z" />
+</vector>

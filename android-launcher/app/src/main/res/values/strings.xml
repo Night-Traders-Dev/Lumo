@@ -20,6 +20,4 @@
     <string name="lock_screen_wake_notification_title">Lumo lock screen ready</string>
     <string name="lock_screen_wake_notification_text">Tap to open the Lumo lock screen surface.</string>
     <string name="lock_screen_companion_unavailable_message">Android 14 and newer block Lumo\'s wake companion here. Opening the lock screen preview instead.</string>
-    <string name="back_gesture_service_label">Lumo Back Gesture</string>
-    <string name="back_gesture_service_description">Enables swiping from the right edge to go back, similar to Ubuntu Touch gestures.</string>
 </resources>

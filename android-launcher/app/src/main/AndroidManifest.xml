@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
@@ -11,9 +12,9 @@
     <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
-        android:requiredFeature="false" />
+        tools:ignore="QueryAllPackagesPermission" />
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"
-        android:requiredFeature="false" />
+        tools:ignore="ProtectedPermissions" />
 
     <queries>
         <intent>
@@ -48,14 +49,14 @@
         </activity>
 
         <activity
-            android:name=".SettingsActivity"
+            android:name=".settings.SettingsActivity"
             android:excludeFromRecents="true"
             android:exported="true"
             android:label="@string/settings_app_name"
             android:taskAffinity="dev.nighttraders.lumo.launcher.settings" />
 
         <activity
-            android:name=".LockScreenActivity"
+            android:name=".lockscreen.LockScreenActivity"
             android:excludeFromRecents="true"
             android:exported="false"
             android:label="@string/lock_screen_name"
@@ -75,7 +76,7 @@
         </service>
 
         <service
-            android:name=".input.LumoInputMethodService"
+            android:name=".keyboard.LumoInputMethodService"
             android:exported="true"
             android:label="@string/lumo_keyboard_label"
             android:permission="android.permission.BIND_INPUT_METHOD">
@@ -92,19 +93,6 @@
             android:name=".overlay.LumoGestureSidebarService"
             android:exported="false"
             android:label="@string/gesture_sidebar_label" />
-
-        <service
-            android:name=".overlay.LumoBackGestureService"
-            android:exported="true"
-            android:label="@string/back_gesture_service_label"
-            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
-            <intent-filter>
-                <action android:name="android.accessibilityservice.AccessibilityService" />
-            </intent-filter>
-            <meta-data
-                android:name="android.accessibilityservice"
-                android:resource="@xml/lumo_back_gesture_service" />
-        </service>
 
         <service
             android:name=".lockscreen.LumoLockScreenCompanionService"

@@ -1,4 +1,4 @@
-package dev.nighttraders.lumo.launcher.ui
+package dev.nighttraders.lumo.launcher.lockscreen
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -58,6 +58,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.nighttraders.lumo.launcher.notifications.LauncherNotification
+import dev.nighttraders.lumo.launcher.ui.InfoGraphicMetric
+import dev.nighttraders.lumo.launcher.ui.SystemStatusSnapshot
+import dev.nighttraders.lumo.launcher.ui.buildInfoGraphicMetrics
+import dev.nighttraders.lumo.launcher.ui.rememberStepCount
 import kotlinx.coroutines.delay
 import java.time.LocalDate
 import kotlin.math.cos

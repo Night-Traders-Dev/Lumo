@@ -2,6 +2,7 @@ package dev.nighttraders.lumo.launcher.ui
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -15,6 +16,8 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -57,7 +60,9 @@ import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.PushPin
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.Wallpaper
 import androidx.compose.material.icons.rounded.Wifi
+import dev.nighttraders.lumo.launcher.lockscreen.LumoLockScreenScreen
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -78,6 +83,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -100,6 +106,7 @@ import kotlin.math.abs
 import kotlin.math.pow
 import kotlin.math.sign
 import dev.nighttraders.lumo.launcher.data.LaunchableApp
+import dev.nighttraders.lumo.launcher.data.LumoDebugLog
 import dev.nighttraders.lumo.launcher.notifications.LauncherNotification
 import dev.nighttraders.lumo.launcher.notifications.LauncherNotificationCenter
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -112,6 +119,14 @@ private enum class ScopePage(val title: String) {
     Home("Today"),
 }
 
+/** Tracks which surface is currently showing so every button/gesture knows the global state. */
+private enum class LauncherScreen {
+    HOME,
+    APP_DRAWER_BOTTOM,
+    APP_DRAWER_SIDE,
+    MULTITASK,
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun LumoLauncherApp(
@@ -119,7 +134,9 @@ fun LumoLauncherApp(
     systemStatus: SystemStatusSnapshot,
     isDefaultHome: Boolean,
     requestedPageIndex: Int,
+    navigationRequestId: Int = 0,
     settings: dev.nighttraders.lumo.launcher.data.LumoLauncherSettings = dev.nighttraders.lumo.launcher.data.LumoLauncherSettings(),
+    onOpenWallpaperPicker: () -> Unit = {},
     isDashLocked: Boolean = false,
     lockScreenSecurityType: String = "none",
     onVerifyPin: (String) -> Boolean = { false },
@@ -152,16 +169,32 @@ fun LumoLauncherApp(
     var appActionTarget by remember { mutableStateOf<LaunchableApp?>(null) }
     var showSwipeHint by rememberSaveable { mutableStateOf(false) }
     var swipeHintShown by rememberSaveable { mutableStateOf(false) }
-    var appsOverlayFromBottom by rememberSaveable { mutableStateOf(false) }
-    var appsOverlayFromSide by rememberSaveable { mutableStateOf(false) }
-    var showMultitask by rememberSaveable { mutableStateOf(false) }
+    var currentScreen by rememberSaveable { mutableStateOf(LauncherScreen.HOME) }
 
-    val appsVisible = appsOverlayFromBottom || appsOverlayFromSide
-
-    // Suppress the back gesture service when the app drawer is open so swipe-out works
-    LaunchedEffect(appsVisible) {
-        dev.nighttraders.lumo.launcher.overlay.LumoBackGestureService.suppressBackGesture = appsVisible
+    // React to external navigation requests (e.g. gesture sidebar "open apps" intent)
+    LaunchedEffect(navigationRequestId) {
+        if (navigationRequestId > 0) {
+            val requested = when (requestedPageIndex) {
+                1 -> LauncherScreen.APP_DRAWER_SIDE
+                else -> LauncherScreen.HOME
+            }
+            // Toggle: if already on the requested screen, go home instead
+            val target = if (currentScreen == requested && requested != LauncherScreen.HOME) {
+                LauncherScreen.HOME
+            } else {
+                requested
+            }
+            LumoDebugLog.d("Nav", "Intent reqId=$navigationRequestId page=$requestedPageIndex current=$currentScreen -> $target")
+            currentScreen = target
+        }
     }
+
+    // Derived convenience flags from the single source of truth
+    val appsOverlayFromBottom = currentScreen == LauncherScreen.APP_DRAWER_BOTTOM
+    val appsOverlayFromSide = currentScreen == LauncherScreen.APP_DRAWER_SIDE
+    val appsVisible = appsOverlayFromBottom || appsOverlayFromSide
+    val showMultitask = currentScreen == LauncherScreen.MULTITASK
+
 
     // Show swipe hint once after first load
     LaunchedEffect(uiState.isLoading, isDashLocked) {
@@ -207,6 +240,21 @@ fun LumoLauncherApp(
         }
     }
 
+    // Debug: log dash rail state changes
+    LaunchedEffect(railVisible) {
+        val effWidth = maxOf(settings.dashRailWidthDp, settings.dashIconSizeDp + 16)
+        LumoDebugLog.d(
+            "Dash",
+            if (railVisible) "Rail shown — railWidth=${settings.dashRailWidthDp}dp iconSize=${settings.dashIconSizeDp}dp effectiveWidth=${effWidth}dp"
+            else "Rail hidden",
+        )
+    }
+
+    LaunchedEffect(settings.dashRailWidthDp, settings.dashIconSizeDp) {
+        val effWidth = maxOf(settings.dashRailWidthDp, settings.dashIconSizeDp + 16)
+        LumoDebugLog.d("Dash", "Settings changed — railWidth=${settings.dashRailWidthDp}dp iconSize=${settings.dashIconSizeDp}dp effectiveWidth=${effWidth}dp")
+    }
+
     LaunchedEffect(uiState.headsUpNotification?.key) {
         val headsUp = uiState.headsUpNotification ?: return@LaunchedEffect
         delay(6_000)
@@ -214,36 +262,54 @@ fun LumoLauncherApp(
     }
 
     fun openApps(fromBottom: Boolean = false) {
+        val target = if (fromBottom) LauncherScreen.APP_DRAWER_BOTTOM else LauncherScreen.APP_DRAWER_SIDE
+        LumoDebugLog.d("Nav", "openApps from=$currentScreen to=$target (fromBottom=$fromBottom)")
         railVisible = false
         indicatorsExpanded = false
-        if (fromBottom) {
-            appsOverlayFromBottom = true
-        } else {
-            appsOverlayFromSide = true
-        }
+        currentScreen = target
     }
 
     fun goHome() {
+        LumoDebugLog.d("Nav", "goHome from=$currentScreen")
         railVisible = false
-        appsOverlayFromBottom = false
-        appsOverlayFromSide = false
+        currentScreen = LauncherScreen.HOME
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(
-                brush = Brush.verticalGradient(
-                    colors = listOf(
-                        Color(0xFF0F0B12),
-                        Color(0xFF1A0816),
-                        Color(0xFF2C001E),
-                        Color(0xFF0B090E),
+    val blurRadius = animateDpAsState(
+        targetValue = if (appsVisible) 20.dp else 0.dp,
+        animationSpec = tween(300),
+        label = "appDrawerBlur",
+    )
+
+    // Animated padding so content shifts right when the dash rail is visible
+    val effectiveRailWidthDp = maxOf(settings.dashRailWidthDp, settings.dashIconSizeDp + 16)
+    val railContentOffset = animateDpAsState(
+        targetValue = if (railVisible) (effectiveRailWidthDp + 4).dp else 0.dp,
+        animationSpec = tween(250),
+        label = "railContentOffset",
+    )
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        // Background layer — gets blurred when app drawer is visible
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .then(
+                    if (blurRadius.value > 0.dp) Modifier.blur(blurRadius.value) else Modifier,
+                )
+                .background(
+                    brush = Brush.verticalGradient(
+                        colors = listOf(
+                            Color(0xFF0F0B12),
+                            Color(0xFF1A0816),
+                            Color(0xFF2C001E),
+                            Color(0xFF0B090E),
+                        ),
                     ),
                 ),
-            ),
-    ) {
-        UbuntuTouchBackdrop()
+        ) {
+            UbuntuTouchBackdrop(wallpaperPath = settings.wallpaperPath)
+        }
 
         Column(
             modifier = Modifier
@@ -259,7 +325,7 @@ fun LumoLauncherApp(
                 onToggleIndicators = { indicatorsExpanded = !indicatorsExpanded },
                 onExpandIndicators = { indicatorsExpanded = true },
                 onCollapseIndicators = { indicatorsExpanded = false },
-                onOpenApps = { if (appsVisible) goHome() else openApps() },
+                onOpenMultitask = { currentScreen = LauncherScreen.MULTITASK },
             )
 
             if (!isDefaultHome) {
@@ -282,6 +348,10 @@ fun LumoLauncherApp(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
+                        .padding(start = railContentOffset.value)
+                        .then(
+                            if (blurRadius.value > 0.dp) Modifier.blur(blurRadius.value) else Modifier,
+                        )
                         .pointerInput(appsOverlayFromSide, settings.horizontalSwipeThresholdDp) {
                             val thresholdPx = settings.horizontalSwipeThresholdDp * density
                             var totalDrag = 0f
@@ -302,15 +372,7 @@ fun LumoLauncherApp(
                 ) {
                     HomeScopePage(
                         status = systemStatus,
-                        pinnedApps = uiState.favorites,
-                        recentApps = uiState.recentApps,
-                        hasNotificationAccess = uiState.hasNotificationAccess,
-                        notifications = uiState.recentNotifications,
-                        onRequestNotificationAccess = onRequestNotificationAccess,
-                        onOpenNotification = onOpenNotification,
-                        onLongPressNotification = { notificationActionTarget = it },
-                        onDismissNotification = onDismissNotification,
-                        onLaunchApp = onLaunchApp,
+                        onOpenWallpaperPicker = onOpenWallpaperPicker,
                     )
                 }
 
@@ -419,51 +481,50 @@ fun LumoLauncherApp(
                         modifier = Modifier.align(Alignment.BottomCenter),
                         heightDp = settings.bottomEdgeHeightDp,
                         thresholdDp = settings.bottomEdgeThresholdDp,
-                        appsVisible = appsVisible,
-                        onGoHome = { goHome() },
+                        currentScreen = currentScreen,
                         onOpenApps = { openApps(fromBottom = true) },
-                        onDismissApps = { goHome() },
+                        onOpenMultitask = { currentScreen = LauncherScreen.MULTITASK },
+                        onGoHome = { goHome() },
                     )
                 }
 
-                if (!appsVisible && !indicatorsExpanded) {
-                    if (settings.leftEdgeGestureEnabled) {
-                        LeftEdgeRevealHandle(
-                            modifier = Modifier.align(Alignment.CenterStart),
-                            widthDp = settings.leftEdgeWidthDp,
-                            thresholdDp = settings.leftEdgeThresholdDp,
-                            railVisible = railVisible,
-                            onRevealRail = { railVisible = true },
-                        )
-                    }
+                // Left edge gesture: always available so the rail can be revealed from any screen
+                if (settings.leftEdgeGestureEnabled) {
+                    LeftEdgeRevealHandle(
+                        modifier = Modifier.align(Alignment.CenterStart),
+                        widthDp = settings.leftEdgeWidthDp,
+                        thresholdDp = settings.leftEdgeThresholdDp,
+                        railVisible = railVisible,
+                        onRevealRail = { railVisible = true },
+                    )
+                }
 
-                    if (settings.multitaskGestureEnabled) {
-                        // Multitask gesture: left-to-right swipe on center area (not edge)
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.CenterStart)
-                                .padding(start = 40.dp)
-                                .fillMaxHeight()
-                                .fillMaxWidth(0.4f)
-                                .pointerInput(settings.multitaskSwipeThresholdDp) {
-                                    val thresholdPx = settings.multitaskSwipeThresholdDp * density
-                                    var totalDrag = 0f
-                                    detectHorizontalDragGestures(
-                                        onDragStart = { totalDrag = 0f },
-                                        onHorizontalDrag = { _, dragAmount ->
-                                            if (dragAmount > 0f) totalDrag += dragAmount
-                                        },
-                                        onDragCancel = { totalDrag = 0f },
-                                        onDragEnd = {
-                                            if (totalDrag > thresholdPx) {
-                                                showMultitask = true
-                                            }
-                                            totalDrag = 0f
-                                        },
-                                    )
-                                },
-                        )
-                    }
+                if (!appsVisible && !indicatorsExpanded && settings.multitaskGestureEnabled) {
+                    // Multitask gesture: left-to-right swipe on center area (not edge)
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.CenterStart)
+                            .padding(start = 40.dp)
+                            .fillMaxHeight()
+                            .fillMaxWidth(0.4f)
+                            .pointerInput(settings.multitaskSwipeThresholdDp) {
+                                val thresholdPx = settings.multitaskSwipeThresholdDp * density
+                                var totalDrag = 0f
+                                detectHorizontalDragGestures(
+                                    onDragStart = { totalDrag = 0f },
+                                    onHorizontalDrag = { _, dragAmount ->
+                                        if (dragAmount > 0f) totalDrag += dragAmount
+                                    },
+                                    onDragCancel = { totalDrag = 0f },
+                                    onDragEnd = {
+                                        if (totalDrag > thresholdPx) {
+                                            currentScreen = LauncherScreen.MULTITASK
+                                        }
+                                        totalDrag = 0f
+                                    },
+                                )
+                            },
+                    )
                 }
 
                 if (railVisible) {
@@ -502,8 +563,8 @@ fun LumoLauncherApp(
                     UbuntuTouchLauncherRail(
                         appsVisible = appsVisible,
                         railWidthDp = settings.dashRailWidthDp,
+                        iconSizeDp = settings.dashIconSizeDp,
                         apps = launcherApps,
-                        onGoHome = { goHome() },
                         onOpenApps = { if (appsVisible) goHome() else openApps() },
                         onOpenSettings = onOpenSettings,
                         onLaunchApp = { app ->
@@ -649,14 +710,21 @@ fun LumoLauncherApp(
 
         // Multitask / recent apps overlay (Ubuntu Touch style)
         if (showMultitask) {
+            LaunchedEffect(Unit) {
+                LumoDebugLog.d("Multitask", "Showing spread — ${uiState.recentApps.size} recent, ${uiState.apps.size} total")
+            }
             MultitaskOverlay(
                 recentApps = uiState.recentApps,
                 allApps = uiState.apps,
                 onLaunchApp = { app ->
-                    showMultitask = false
+                    LumoDebugLog.i("Multitask", "Launching ${app.label} from spread")
+                    currentScreen = LauncherScreen.HOME
                     onLaunchApp(app)
                 },
-                onDismiss = { showMultitask = false },
+                onDismiss = {
+                    LumoDebugLog.d("Multitask", "Dismissed spread -> HOME")
+                    currentScreen = LauncherScreen.HOME
+                },
             )
         }
 
@@ -725,7 +793,6 @@ private fun MultitaskOverlay(
     val appsToShow = remember(recentApps, allApps) {
         recentApps.ifEmpty { allApps.take(6) }.take(8)
     }
-    // Track dismissed cards locally so swipe-away removes them from view
     var dismissedKeys by remember { mutableStateOf(emptySet<String>()) }
     val visibleApps = remember(appsToShow, dismissedKeys) {
         appsToShow.filterNot { it.componentKey in dismissedKeys }
@@ -743,45 +810,55 @@ private fun MultitaskOverlay(
                     ),
                 ),
             )
-            .pointerInput(Unit) {
-                detectTapGestures { onDismiss() }
-            }
-            .windowInsetsPadding(WindowInsets.systemBars)
-            .padding(horizontal = 12.dp, vertical = 16.dp),
+            .windowInsetsPadding(WindowInsets.systemBars),
     ) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            if (visibleApps.isEmpty()) {
+        if (visibleApps.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .pointerInput(Unit) { detectTapGestures { onDismiss() } },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = "No recent apps",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = Color(0xFF777777),
+                )
+            }
+        } else {
+            // Ubuntu Touch spread: horizontally overlapping cards with 3D perspective
+            val cardWidthDp = 240.dp
+            val stepDp = 120.dp // horizontal offset per card (smaller = more overlap)
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight()
+                    .padding(bottom = 72.dp)
+                    .pointerInput(Unit) { detectTapGestures { onDismiss() } },
+                contentAlignment = Alignment.Center,
+            ) {
+                val scrollState = rememberScrollState()
+                val cardHeightDp = 320.dp
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    contentAlignment = Alignment.Center,
+                        .height(cardHeightDp)
+                        .horizontalScroll(scrollState)
+                        .padding(vertical = 8.dp),
                 ) {
-                    Text(
-                        text = "No recent apps",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = Color(0xFF777777),
-                    )
-                }
-            } else {
-                // Ubuntu Touch style: spread cards in a vertical list
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(14.dp),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 8.dp),
-                ) {
-                    items(
-                        items = visibleApps,
-                        key = { it.componentKey },
-                    ) { app ->
-                        MultitaskAppCard(
+                    // Total width: enough to hold all overlapping cards
+                    val totalWidth = cardWidthDp + stepDp * (visibleApps.size - 1).coerceAtLeast(0) + 32.dp
+                    Spacer(modifier = Modifier.width(totalWidth).height(cardHeightDp))
+
+                    visibleApps.forEachIndexed { index, app ->
+                        SpreadCard(
                             app = app,
-                            onClick = {
-                                onLaunchApp(app)
-                            },
-                            onSwipeDismiss = {
+                            index = index,
+                            total = visibleApps.size,
+                            modifier = Modifier
+                                .padding(start = 16.dp + stepDp * index),
+                            onClick = { onLaunchApp(app) },
+                            onClose = {
                                 dismissedKeys = dismissedKeys + app.componentKey
                             },
                         )
@@ -789,77 +866,114 @@ private fun MultitaskOverlay(
                 }
             }
         }
+
+        // Bottom dock bar
+        SpreadBottomDock(
+            apps = visibleApps,
+            modifier = Modifier.align(Alignment.BottomCenter),
+            onLaunchApp = onLaunchApp,
+            onHideApps = onDismiss,
+        )
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun MultitaskAppCard(
+private fun SpreadCard(
     app: LaunchableApp,
+    index: Int,
+    total: Int,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit,
-    onSwipeDismiss: () -> Unit,
+    onClose: () -> Unit,
 ) {
-    // Swipe-to-dismiss offset
-    var offsetX by remember { mutableStateOf(0f) }
-    val animatedOffset by androidx.compose.animation.core.animateFloatAsState(
-        targetValue = offsetX,
+    // Slight Y-axis rotation for depth: cards further right rotate more
+    val rotationY = remember(index, total) {
+        if (total <= 1) 0f else -8f + (index.toFloat() / (total - 1).coerceAtLeast(1)) * 16f
+    }
+
+    // Swipe-up-to-dismiss
+    var offsetY by remember { mutableStateOf(0f) }
+    val animatedOffsetY by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = offsetY,
         animationSpec = spring(
             dampingRatio = Spring.DampingRatioMediumBouncy,
             stiffness = Spring.StiffnessMediumLow,
         ),
-        label = "cardSwipe",
+        label = "spreadSwipe",
     )
 
+    // Derive card background from app accent color
+    val accentColor = remember(app.accentSeed) {
+        if (app.accentSeed != 0) {
+            Color(app.accentSeed).copy(alpha = 1f)
+        } else {
+            Color(0xFF242030)
+        }
+    }
+    val cardBg = remember(accentColor) {
+        // Darken the accent for a subtle tinted background
+        accentColor.copy(
+            red = accentColor.red * 0.25f,
+            green = accentColor.green * 0.25f,
+            blue = accentColor.blue * 0.25f,
+        )
+    }
+
     Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(140.dp)
+        modifier = modifier
+            .width(240.dp)
+            .fillMaxHeight()
             .graphicsLayer {
-                translationX = animatedOffset
-                alpha = (1f - (kotlin.math.abs(animatedOffset) / 800f)).coerceIn(0f, 1f)
+                this.rotationY = rotationY
+                cameraDistance = 12f * density
+                translationY = animatedOffsetY
+                alpha = (1f - (abs(animatedOffsetY) / 1200f)).coerceIn(0f, 1f)
+                shadowElevation = 12f
             }
             .pointerInput(Unit) {
                 var totalDrag = 0f
-                detectHorizontalDragGestures(
-                    onHorizontalDrag = { _, dragAmount ->
-                        totalDrag += dragAmount
-                        offsetX = totalDrag
+                detectVerticalDragGestures(
+                    onVerticalDrag = { _, dragAmount ->
+                        // Only allow upward drag
+                        if (dragAmount < 0 || totalDrag < 0) {
+                            totalDrag += dragAmount
+                            offsetY = totalDrag
+                        }
                     },
                     onDragCancel = {
                         totalDrag = 0f
-                        offsetX = 0f
+                        offsetY = 0f
                     },
                     onDragEnd = {
-                        if (kotlin.math.abs(totalDrag) > 200f) {
-                            offsetX = if (totalDrag > 0) 1200f else -1200f
-                            onSwipeDismiss()
+                        if (totalDrag < -250f) {
+                            offsetY = -1500f
+                            onClose()
                         } else {
                             totalDrag = 0f
-                            offsetX = 0f
+                            offsetY = 0f
                         }
                     },
                 )
             }
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(8.dp))
             .clickable(onClick = onClick),
-        color = Color(0xFF1C1826),
-        shape = RoundedCornerShape(12.dp),
-        shadowElevation = 8.dp,
+        color = Color(0xFF1E1A24),
+        shape = RoundedCornerShape(8.dp),
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
-            // Ubuntu Touch title bar — dark bar with app icon + name + close button
+            // Title bar mimicking Ubuntu Touch window decoration
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Color(0xFF2C2538))
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                    .background(Color(0xFF3C3348))
+                    .padding(horizontal = 8.dp, vertical = 5.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                AppIcon(app = app, size = 20.dp)
-                Spacer(modifier = Modifier.width(8.dp))
+                AppIcon(app = app, size = 18.dp)
+                Spacer(modifier = Modifier.width(6.dp))
                 Text(
                     text = app.label,
-                    style = MaterialTheme.typography.labelMedium,
+                    style = MaterialTheme.typography.labelSmall,
                     color = Color.White,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -867,33 +981,104 @@ private fun MultitaskAppCard(
                 )
                 Box(
                     modifier = Modifier
-                        .size(24.dp)
+                        .size(20.dp)
                         .clip(CircleShape)
-                        .background(Color(0x44FFFFFF))
-                        .clickable(onClick = onSwipeDismiss),
+                        .background(Color(0x55FFFFFF))
+                        .clickable(onClick = onClose),
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
                         imageVector = Icons.Rounded.Close,
                         contentDescription = "Close",
                         tint = Color.White,
-                        modifier = Modifier.size(14.dp),
+                        modifier = Modifier.size(12.dp),
                     )
                 }
             }
 
-            // Window preview area
+            // Window preview area — accent-tinted background with app icon
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(
-                        brush = Brush.verticalGradient(
-                            colors = listOf(Color(0xFF201A2A), Color(0xFF16101E)),
-                        ),
-                    ),
+                    .background(cardBg),
                 contentAlignment = Alignment.Center,
             ) {
-                AppIcon(app = app, size = 48.dp)
+                AppIcon(app = app, size = 72.dp)
+            }
+        }
+    }
+}
+
+@Composable
+private fun SpreadBottomDock(
+    apps: List<LaunchableApp>,
+    modifier: Modifier = Modifier,
+    onLaunchApp: (LaunchableApp) -> Unit,
+    onHideApps: () -> Unit,
+) {
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(68.dp),
+        color = Color(0xDD0E0A10),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            // Ubuntu button: "Hide Apps" — returns to home
+            Column(
+                modifier = Modifier
+                    .clickable(onClick = onHideApps)
+                    .padding(horizontal = 8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Icon(
+                    painter = androidx.compose.ui.res.painterResource(
+                        id = dev.nighttraders.lumo.launcher.R.drawable.ic_ubuntu_symbol,
+                    ),
+                    contentDescription = "Hide Apps",
+                    tint = Color.White,
+                    modifier = Modifier.size(28.dp),
+                )
+                Text(
+                    text = "Hide Apps",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color(0xFFB8AFBA),
+                    fontSize = 9.sp,
+                )
+            }
+
+            // App icons for each spread card
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                apps.forEach { app ->
+                    Column(
+                        modifier = Modifier
+                            .clickable { onLaunchApp(app) }
+                            .padding(horizontal = 6.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        AppIcon(app = app, size = 36.dp)
+                        Text(
+                            text = app.label,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color(0xFFB8AFBA),
+                            fontSize = 9.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.width(56.dp),
+                            textAlign = TextAlign.Center,
+                        )
+                    }
+                }
             }
         }
     }
@@ -943,17 +1128,18 @@ private fun BottomEdgeGestureHandle(
     modifier: Modifier = Modifier,
     heightDp: Int = 70,
     thresholdDp: Int = 42,
-    appsVisible: Boolean,
-    onGoHome: () -> Unit,
+    currentScreen: LauncherScreen,
     onOpenApps: () -> Unit,
-    onDismissApps: () -> Unit,
+    onOpenMultitask: () -> Unit,
+    onGoHome: () -> Unit,
 ) {
     Box(
         modifier = modifier
             .fillMaxWidth()
             .height(heightDp.dp)
-            .pointerInput(appsVisible, thresholdDp) {
+            .pointerInput(currentScreen, thresholdDp) {
                 val thresholdPx = thresholdDp * density
+                val longThresholdPx = thresholdPx * 3.5f // longer swipe = app switcher
                 var totalDrag = 0f
                 detectVerticalDragGestures(
                     onVerticalDrag = { _, dragAmount ->
@@ -961,9 +1147,19 @@ private fun BottomEdgeGestureHandle(
                     },
                     onDragCancel = { totalDrag = 0f },
                     onDragEnd = {
-                        when {
-                            appsVisible && totalDrag > thresholdPx -> onDismissApps()
-                            !appsVisible && totalDrag < -thresholdPx -> onOpenApps()
+                        when (currentScreen) {
+                            LauncherScreen.HOME -> when {
+                                totalDrag < -longThresholdPx -> onOpenMultitask()
+                                totalDrag < -thresholdPx -> onOpenApps()
+                            }
+                            LauncherScreen.APP_DRAWER_BOTTOM,
+                            LauncherScreen.APP_DRAWER_SIDE -> when {
+                                totalDrag < -longThresholdPx -> onOpenMultitask()
+                                totalDrag > thresholdPx -> onGoHome()
+                            }
+                            LauncherScreen.MULTITASK -> {
+                                if (totalDrag > thresholdPx) onGoHome()
+                            }
                         }
                         totalDrag = 0f
                     },
@@ -973,7 +1169,41 @@ private fun BottomEdgeGestureHandle(
 }
 
 @Composable
-private fun UbuntuTouchBackdrop() {
+private fun UbuntuTouchBackdrop(wallpaperPath: String = "") {
+    if (wallpaperPath.isNotEmpty()) {
+        val context = androidx.compose.ui.platform.LocalContext.current
+        val bitmap = remember(wallpaperPath) {
+            runCatching {
+                when {
+                    wallpaperPath.startsWith("asset:") -> {
+                        val assetPath = wallpaperPath.removePrefix("asset:")
+                        context.assets.open(assetPath).use {
+                            android.graphics.BitmapFactory.decodeStream(it)
+                        }
+                    }
+                    wallpaperPath.startsWith("content:") -> {
+                        val uri = android.net.Uri.parse(wallpaperPath)
+                        context.contentResolver.openInputStream(uri)?.use {
+                            android.graphics.BitmapFactory.decodeStream(it)
+                        }
+                    }
+                    else -> null
+                }
+            }.getOrNull()
+        }
+        if (bitmap != null) {
+            Image(
+                bitmap = bitmap.asImageBitmap(),
+                contentDescription = "Wallpaper",
+                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+                alpha = 0.7f,
+            )
+            return
+        }
+    }
+
+    // Default gradient backdrop
     Box(
         modifier = Modifier
             .size(360.dp)
@@ -1008,7 +1238,7 @@ private fun UbuntuTouchTopBar(
     onToggleIndicators: () -> Unit,
     onExpandIndicators: () -> Unit,
     onCollapseIndicators: () -> Unit,
-    onOpenApps: () -> Unit,
+    onOpenMultitask: () -> Unit,
 ) {
     Surface(
         modifier = Modifier
@@ -1074,7 +1304,7 @@ private fun UbuntuTouchTopBar(
                 MinimalStatusAction(
                     icon = Icons.Rounded.Apps,
                     label = null,
-                    onClick = onOpenApps,
+                    onClick = onOpenMultitask,
                 )
             }
         }
@@ -1423,8 +1653,8 @@ private fun DefaultHomePill(
 private fun UbuntuTouchLauncherRail(
     appsVisible: Boolean,
     railWidthDp: Int = 68,
+    iconSizeDp: Int = 52,
     apps: List<LaunchableApp>,
-    onGoHome: () -> Unit,
     onOpenApps: () -> Unit,
     onOpenSettings: () -> Unit,
     onLaunchApp: (LaunchableApp) -> Unit,
@@ -1432,9 +1662,12 @@ private fun UbuntuTouchLauncherRail(
 ) {
     val dockSquircle = remember { SquircleShape() }
 
+    // Ensure rail is wide enough for icons + padding
+    val effectiveRailWidth = maxOf(railWidthDp, iconSizeDp + 16)
+
     Surface(
         modifier = Modifier
-            .width(railWidthDp.dp)
+            .width(effectiveRailWidth.dp)
             .fillMaxHeight(),
         color = Color(0xCC0E0A10),
         shape = RoundedCornerShape(0.dp),
@@ -1445,34 +1678,6 @@ private fun UbuntuTouchLauncherRail(
                 .padding(vertical = 8.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            // Ubuntu BFB button at top
-            Box(
-                modifier = Modifier
-                    .size(52.dp)
-                    .clip(CircleShape)
-                    .background(
-                        if (!appsVisible) {
-                            Color(0xFFE95420)
-                        } else {
-                            Color(0x44FFFFFF)
-                        },
-                    )
-                    .clickable(onClick = onGoHome),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    painter = androidx.compose.ui.res.painterResource(
-                        id = dev.nighttraders.lumo.launcher.R.drawable.ic_ubuntu_bfb,
-                    ),
-                    contentDescription = "Home",
-                    tint = Color.White,
-                    modifier = Modifier.size(32.dp),
-                )
-            }
-
-            // Separator
-            DockSeparator()
-
             // Pinned / favorite apps
             Column(
                 modifier = Modifier
@@ -1484,6 +1689,7 @@ private fun UbuntuTouchLauncherRail(
                 apps.forEach { app ->
                     DockAppIcon(
                         app = app,
+                        sizeDp = iconSizeDp,
                         squircle = dockSquircle,
                         onLaunchApp = onLaunchApp,
                         onToggleFavorite = onToggleFavorite,
@@ -1494,27 +1700,25 @@ private fun UbuntuTouchLauncherRail(
             // Separator
             DockSeparator()
 
-            // App drawer button at bottom
+            // App drawer toggle button at bottom — Ubuntu symbol
             Box(
                 modifier = Modifier
                     .padding(top = 6.dp)
-                    .size(52.dp)
-                    .clip(dockSquircle)
+                    .size(iconSizeDp.dp)
+                    .clip(CircleShape)
                     .background(
-                        if (appsVisible) {
-                            Color(0xFFE95420)
-                        } else {
-                            Color(0x33FFFFFF)
-                        },
+                        if (appsVisible) Color(0x44FFFFFF) else Color(0xFFE95420),
                     )
-                    .clickable(onClick = if (appsVisible) onGoHome else onOpenApps),
+                    .clickable(onClick = onOpenApps),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
-                    imageVector = Icons.Rounded.Apps,
+                    painter = androidx.compose.ui.res.painterResource(
+                        id = dev.nighttraders.lumo.launcher.R.drawable.ic_ubuntu_symbol,
+                    ),
                     contentDescription = "Apps",
                     tint = Color.White,
-                    modifier = Modifier.size(28.dp),
+                    modifier = Modifier.size((iconSizeDp * 0.6f).toInt().dp),
                 )
             }
         }
@@ -1536,13 +1740,15 @@ private fun DockSeparator() {
 @Composable
 private fun DockAppIcon(
     app: LaunchableApp,
+    sizeDp: Int = 52,
     squircle: Shape,
     onLaunchApp: (LaunchableApp) -> Unit,
     onToggleFavorite: (LaunchableApp) -> Unit,
 ) {
+    val iconInner = (sizeDp * 0.85f).toInt()
     Box(
         modifier = Modifier
-            .size(52.dp)
+            .size(sizeDp.dp)
             .clip(squircle)
             .background(Color(0x33FFFFFF))
             .combinedClickable(
@@ -1551,24 +1757,28 @@ private fun DockAppIcon(
             ),
         contentAlignment = Alignment.Center,
     ) {
-        AppIcon(app = app, size = 44.dp)
+        AppIcon(app = app, size = iconInner.dp)
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun HomeScopePage(
     status: SystemStatusSnapshot,
-    pinnedApps: List<LaunchableApp>,
-    recentApps: List<LaunchableApp>,
-    hasNotificationAccess: Boolean,
-    notifications: List<LauncherNotification>,
-    onRequestNotificationAccess: () -> Unit,
-    onOpenNotification: (LauncherNotification) -> Unit,
-    onLongPressNotification: (LauncherNotification) -> Unit,
-    onDismissNotification: (LauncherNotification) -> Result<Unit>,
-    onLaunchApp: (LaunchableApp) -> Unit,
+    onOpenWallpaperPicker: () -> Unit = {},
 ) {
-    Box(modifier = Modifier.fillMaxSize()) {
+    var showContextMenu by remember { mutableStateOf(false) }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .combinedClickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = { },
+                onLongClick = { showContextMenu = true },
+            ),
+    ) {
         Column(
             modifier = Modifier
                 .align(Alignment.TopCenter)
@@ -1593,100 +1803,34 @@ private fun HomeScopePage(
                 color = Color(0xFFB8AFBA),
                 style = MaterialTheme.typography.bodyMedium,
             )
-
-            if (!hasNotificationAccess) {
-                NotificationAccessCard(
-                    modifier = Modifier.padding(top = 20.dp),
-                    compact = true,
-                    onRequestNotificationAccess = onRequestNotificationAccess,
-                )
-            } else if (notifications.isNotEmpty()) {
-                Column(
-                    modifier = Modifier
-                        .padding(top = 16.dp)
-                        .width(284.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    notifications.take(2).forEach { notification ->
-                        SimpleNotificationCard(
-                            notification = notification,
-                            onOpenNotification = onOpenNotification,
-                        )
-                    }
-                }
-            }
-
-            // Dash: Pinned apps
-            if (pinnedApps.isNotEmpty()) {
-                DashAppRow(
-                    label = "Pinned",
-                    apps = pinnedApps.take(5),
-                    onLaunchApp = onLaunchApp,
-                    modifier = Modifier.padding(top = 20.dp),
-                )
-            }
-
-            // Dash: Recent apps (exclude pinned to avoid duplicates)
-            val pinnedKeys = remember(pinnedApps) { pinnedApps.mapTo(hashSetOf()) { it.componentKey } }
-            val filteredRecent = remember(recentApps, pinnedKeys) {
-                recentApps.filter { it.componentKey !in pinnedKeys }
-            }
-            if (filteredRecent.isNotEmpty()) {
-                DashAppRow(
-                    label = "Recent",
-                    apps = filteredRecent.take(5),
-                    onLaunchApp = onLaunchApp,
-                    modifier = Modifier.padding(top = 16.dp),
-                )
-            }
         }
 
-    }
-}
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun DashAppRow(
-    label: String,
-    apps: List<LaunchableApp>,
-    onLaunchApp: (LaunchableApp) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelMedium,
-            color = Color(0xFF888888),
-            modifier = Modifier.padding(bottom = 10.dp),
-        )
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
+        // Long-press context menu
+        androidx.compose.material3.DropdownMenu(
+            expanded = showContextMenu,
+            onDismissRequest = { showContextMenu = false },
+            modifier = Modifier.background(Color(0xFF1E1E2E)),
         ) {
-            apps.forEach { app ->
-                Column(
-                    modifier = Modifier
-                        .clickable { onLaunchApp(app) },
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    AppIcon(app = app, size = 44.dp)
-                    Text(
-                        text = app.label,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Color(0xFFB8AFBA),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.width(52.dp),
-                    )
-                }
-            }
+            androidx.compose.material3.DropdownMenuItem(
+                text = {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Wallpaper,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(20.dp),
+                        )
+                        Text("Wallpaper", color = Color.White)
+                    }
+                },
+                onClick = {
+                    showContextMenu = false
+                    onOpenWallpaperPicker()
+                },
+            )
         }
     }
 }
@@ -2038,47 +2182,6 @@ private fun AppActionSheet(
 }
 
 @Composable
-private fun SimpleNotificationCard(
-    notification: LauncherNotification,
-    onOpenNotification: (LauncherNotification) -> Unit,
-) {
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onOpenNotification(notification) },
-        color = Color(0x33000000),
-        shape = RoundedCornerShape(18.dp),
-    ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Text(
-                text = notification.appLabel,
-                style = MaterialTheme.typography.labelSmall,
-                color = Color(0xFFB8AFBA),
-            )
-            Text(
-                text = notification.title,
-                style = MaterialTheme.typography.titleSmall,
-                color = Color.White,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            if (notification.message.isNotBlank()) {
-                Text(
-                    text = notification.message,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color(0xFFE7DFEA),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
-    }
-}
-
-@Composable
 private fun NotificationDismissBackground() {
     Box(
         modifier = Modifier
@@ -2182,9 +2285,9 @@ private fun AppsScopePage(
             .background(
                 brush = Brush.verticalGradient(
                     colors = listOf(
-                        Color(0xFF0C0A10),
-                        Color(0xFF1A0816),
-                        Color(0xFF2C001E),
+                        Color(0x990C0A10),
+                        Color(0x991A0816),
+                        Color(0x992C001E),
                     ),
                 ),
             )

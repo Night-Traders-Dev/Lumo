@@ -1,4 +1,4 @@
-package dev.nighttraders.lumo.launcher
+package dev.nighttraders.lumo.launcher.lockscreen
 
 import android.app.KeyguardManager
 import android.content.Context
@@ -16,10 +16,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import dev.nighttraders.lumo.launcher.data.LauncherRepository
-import dev.nighttraders.lumo.launcher.lockscreen.LumoLockScreenCompanionService
-import dev.nighttraders.lumo.launcher.lockscreen.LumoLockState
 import dev.nighttraders.lumo.launcher.notifications.LauncherNotificationCenter
-import dev.nighttraders.lumo.launcher.ui.LumoLockScreenScreen
 import dev.nighttraders.lumo.launcher.ui.rememberSystemStatus
 import dev.nighttraders.lumo.launcher.ui.theme.LumoLauncherTheme
 import kotlinx.coroutines.launch

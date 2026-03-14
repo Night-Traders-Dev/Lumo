@@ -1,4 +1,4 @@
-package dev.nighttraders.lumo.launcher.input
+package dev.nighttraders.lumo.launcher.keyboard
 
 import android.content.res.ColorStateList
 import android.graphics.Color
@@ -41,6 +41,8 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
     private var autoCapitalization = false
     private var symbolMode = false
     private var alternateSymbolMode = false
+    private var numpadMode = false
+    private var clipboardMode = false
 
     private var spellCheckerSession: SpellCheckerSession? = null
 
@@ -158,6 +160,16 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
         lastSuggestionRequestWord = ""
         lastSuggestionResultWord = ""
         pendingAutoCorrection = null
+
+        // Detect numeric/PIN input types and switch to numpad layout
+        val inputType = info?.inputType ?: 0
+        val inputClass = inputType and InputType.TYPE_MASK_CLASS
+        val variation = inputType and InputType.TYPE_MASK_VARIATION
+        numpadMode = inputClass == InputType.TYPE_CLASS_NUMBER ||
+            inputClass == InputType.TYPE_CLASS_PHONE ||
+            variation == InputType.TYPE_NUMBER_VARIATION_PASSWORD ||
+            variation == InputType.TYPE_TEXT_VARIATION_PASSWORD && inputClass == InputType.TYPE_CLASS_NUMBER
+
         updateAutoCapitalization()
         rebuildKeyboardRows()
         refreshSuggestionStrip()
@@ -275,6 +287,38 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
 
     private fun keyboardLayoutForCurrentMode(): List<List<KeySpec>> =
         when {
+            clipboardMode -> listOf(
+                listOf(
+                    actionKey("Select All", weight = 1f) { handleSelectAll() },
+                ),
+                listOf(
+                    actionKey("Cut", weight = 1f) { handleCut() },
+                    actionKey("Copy", weight = 1f) { handleCopy() },
+                    actionKey("Paste", weight = 1f) { handlePaste() },
+                ),
+                listOf(
+                    actionKey("ABC", weight = 1f) { clipboardMode = false; rebuildKeyboardRows() },
+                    backspaceKey(weight = 1f),
+                ),
+                listOf(
+                    actionKey("Enter", weight = 1f) { handleEnter() },
+                ),
+            )
+
+            numpadMode -> listOf(
+                listOf("1", "2", "3").map { numpadKey(it) },
+                listOf("4", "5", "6").map { numpadKey(it) },
+                listOf("7", "8", "9").map { numpadKey(it) },
+                listOf(
+                    actionKey("ABC", weight = 1f) { numpadMode = false; rebuildKeyboardRows() },
+                    numpadKey("0"),
+                    backspaceKey(weight = 1f),
+                ),
+                listOf(
+                    actionKey("Enter", weight = 1f) { handleEnter() },
+                ),
+            )
+
             !symbolMode -> listOf(
                 listOf("q", "w", "e", "r", "t", "y", "u", "i", "o", "p").map(::letterKey),
                 listOf("a", "s", "d", "f", "g", "h", "j", "k", "l").map(::letterKey),
@@ -286,9 +330,10 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
                     add(backspaceKey())
                 },
                 listOf(
-                    actionKey("?123", weight = 1.3f, highlighted = symbolMode) { openPrimarySymbols() },
+                    actionKey("?123", weight = 1.2f, highlighted = symbolMode) { openPrimarySymbols() },
+                    actionKey("Clip", weight = 0.8f) { clipboardMode = true; rebuildKeyboardRows() },
+                    spaceKey(weight = 3.8f),
                     textKey(","),
-                    spaceKey(weight = 4.2f),
                     textKey("."),
                     actionKey("Enter", weight = 1.6f) { handleEnter() },
                 ),
@@ -510,6 +555,26 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
         currentInputConnection?.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER))
         clearSuggestions()
         updateAutoCapitalization()
+    }
+
+    private fun handleSelectAll() {
+        performKeyHaptic()
+        currentInputConnection?.performContextMenuAction(android.R.id.selectAll)
+    }
+
+    private fun handleCut() {
+        performKeyHaptic()
+        currentInputConnection?.performContextMenuAction(android.R.id.cut)
+    }
+
+    private fun handleCopy() {
+        performKeyHaptic()
+        currentInputConnection?.performContextMenuAction(android.R.id.copy)
+    }
+
+    private fun handlePaste() {
+        performKeyHaptic()
+        currentInputConnection?.performContextMenuAction(android.R.id.paste)
     }
 
     private fun updateSuggestions() {
@@ -1201,12 +1266,19 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
             isSpaceKey = true,
         )
 
-    private fun backspaceKey(): KeySpec =
+    private fun backspaceKey(weight: Float = 1.4f): KeySpec =
         KeySpec(
             value = "Bksp",
             isSpecial = true,
-            weight = 1.4f,
+            weight = weight,
             isBackspaceKey = true,
+        )
+
+    private fun numpadKey(value: String): KeySpec =
+        KeySpec(
+            value = value,
+            isSpecial = false,
+            weight = 1f,
         )
 
     private fun moveCursor(direction: Int) {

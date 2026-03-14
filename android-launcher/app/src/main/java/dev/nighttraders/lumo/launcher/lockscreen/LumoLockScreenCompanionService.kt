@@ -17,7 +17,6 @@ import android.os.PowerManager
 import android.provider.Settings
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
-import dev.nighttraders.lumo.launcher.LockScreenActivity
 import dev.nighttraders.lumo.launcher.R
 
 class LumoLockScreenCompanionService : Service() {
@@ -89,10 +88,11 @@ class LumoLockScreenCompanionService : Service() {
             .setSmallIcon(R.mipmap.ic_launcher_round)
             .setContentTitle(getString(R.string.lock_screen_service_notification_title))
             .setContentText(getString(R.string.lock_screen_service_notification_text))
-            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setPriority(NotificationCompat.PRIORITY_MIN)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setOngoing(true)
             .setSilent(true)
+            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .build()
 
     private fun buildWakeNotification() =
@@ -128,7 +128,7 @@ class LumoLockScreenCompanionService : Service() {
                 NotificationChannel(
                     SERVICE_CHANNEL_ID,
                     getString(R.string.lock_screen_service_channel_name),
-                    NotificationManager.IMPORTANCE_LOW,
+                    NotificationManager.IMPORTANCE_MIN,
                 ).apply {
                     description = getString(R.string.lock_screen_service_channel_description)
                     setShowBadge(false)

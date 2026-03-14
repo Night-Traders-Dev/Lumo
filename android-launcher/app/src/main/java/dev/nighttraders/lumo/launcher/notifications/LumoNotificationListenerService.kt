@@ -56,6 +56,8 @@ class LumoNotificationListenerService : NotificationListenerService() {
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {
         super.onNotificationPosted(sbn)
+        // Skip our own package notifications (service, overlay, etc.)
+        if (sbn.packageName == applicationContext.packageName) return
         sbn.toLauncherNotification(applicationContext)?.let { notification ->
             LauncherNotificationCenter.upsert(
                 notification = notification,
@@ -86,7 +88,10 @@ class LumoNotificationListenerService : NotificationListenerService() {
 
     private fun refreshFromActiveNotifications() {
         val active = runCatching { activeNotifications }.getOrNull() ?: return
-        val notifications = active.mapNotNull { it.toLauncherNotification(applicationContext) }
+        val ownPackage = applicationContext.packageName
+        val notifications = active
+            .filter { it.packageName != ownPackage }
+            .mapNotNull { it.toLauncherNotification(applicationContext) }
         LauncherNotificationCenter.replaceAll(notifications)
     }
 
@@ -193,6 +198,16 @@ fun Context.hasNotificationListenerAccess(): Boolean {
 private fun StatusBarNotification.toLauncherNotification(context: Context): LauncherNotification? {
     val notification = notification
     if ((notification.flags and Notification.FLAG_GROUP_SUMMARY) != 0) {
+        return null
+    }
+    // Skip foreground service notifications (e.g. "displaying over other apps")
+    if ((notification.flags and Notification.FLAG_FOREGROUND_SERVICE) != 0) {
+        return null
+    }
+    // Skip ongoing system notifications (Android system overlay alerts, etc.)
+    if ((notification.flags and Notification.FLAG_ONGOING_EVENT) != 0 &&
+        notification.category == Notification.CATEGORY_SERVICE
+    ) {
         return null
     }
 

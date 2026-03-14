@@ -66,7 +66,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     val launcherSettings: StateFlow<LumoLauncherSettings> = repository.observeLauncherSettings()
         .stateIn(
             scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5_000),
+            started = SharingStarted.Eagerly,
             initialValue = LumoLauncherSettings(),
         )
 

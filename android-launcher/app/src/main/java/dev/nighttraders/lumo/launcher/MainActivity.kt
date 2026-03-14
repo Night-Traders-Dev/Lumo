@@ -27,9 +27,11 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
 import dev.nighttraders.lumo.launcher.data.LumoLauncherSettings
 import dev.nighttraders.lumo.launcher.data.LauncherRepository
+import dev.nighttraders.lumo.launcher.lockscreen.LockScreenActivity
 import dev.nighttraders.lumo.launcher.lockscreen.LumoLockState
-import dev.nighttraders.lumo.launcher.overlay.LumoBackGestureService
+import dev.nighttraders.lumo.launcher.lockscreen.LumoUnlockReceiver
 import dev.nighttraders.lumo.launcher.overlay.LumoGestureSidebarService
+import dev.nighttraders.lumo.launcher.settings.SettingsActivity
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.nighttraders.lumo.launcher.notifications.hasNotificationListenerAccess
 import dev.nighttraders.lumo.launcher.ui.LumoLauncherApp
@@ -43,6 +45,7 @@ class MainActivity : ComponentActivity() {
     private val viewModel: LauncherViewModel by viewModels { LauncherViewModel.Factory }
     private val repository by lazy { LauncherRepository(applicationContext) }
     private val requestedPageIndex = mutableIntStateOf(START_PAGE_HOME)
+    private val navigationRequestId = mutableIntStateOf(0)
     private val lockScreenSecurityType = mutableStateOf("none")
     private val lockScreenSecurityHash = mutableStateOf("")
     private val lockScreenSecuritySalt = mutableStateOf("")
@@ -57,7 +60,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        dev.nighttraders.lumo.launcher.data.LumoMigration.runIfNeeded(applicationContext)
+        dev.nighttraders.lumo.launcher.data.LumoDebugLog.logKnownIssues()
         requestedPageIndex.intValue = parseRequestedPage(intent)
+        navigationRequestId.intValue++
         enableEdgeToEdge()
         configureSystemBars()
         refreshDefaultHomeState()
@@ -74,15 +80,12 @@ class MainActivity : ComponentActivity() {
             val launcherSettings by viewModel.launcherSettings.collectAsStateWithLifecycle()
 
             LumoLauncherTheme {
-                // Sync back gesture service settings
-                LumoBackGestureService.thresholdDp = launcherSettings.backGestureThresholdDp
-                LumoBackGestureService.handleWidthDp = launcherSettings.backGestureWidthDp
-
                 LumoLauncherApp(
                     uiState = uiState,
                     systemStatus = systemStatus,
                     isDefaultHome = isDefaultHome,
                     requestedPageIndex = requestedPageIndex.intValue,
+                    navigationRequestId = navigationRequestId.intValue,
                     settings = launcherSettings,
                     isDashLocked = isDashLocked && lockScreenSecurityType.value != "none",
                     lockScreenSecurityType = lockScreenSecurityType.value,
@@ -94,6 +97,7 @@ class MainActivity : ComponentActivity() {
                     onDashUnlock = { LumoLockState.unlock() },
                     onRequestDefaultHome = ::requestDefaultHomeRole,
                     onOpenSettings = ::openSettings,
+                    onOpenWallpaperPicker = ::openWallpaperPicker,
                     onOpenLockScreen = ::openLockScreen,
                     onRequestNotificationAccess = ::requestNotificationAccess,
                     onOpenWifiSettings = { startActivity(Intent(Settings.ACTION_WIFI_SETTINGS)) },
@@ -185,6 +189,7 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         requestedPageIndex.intValue = parseRequestedPage(intent)
+        navigationRequestId.intValue++
     }
 
     override fun onResume() {
@@ -234,6 +239,10 @@ class MainActivity : ComponentActivity() {
 
     private fun openSettings() {
         startActivity(SettingsActivity.createIntent(this))
+    }
+
+    private fun openWallpaperPicker() {
+        startActivity(SettingsActivity.createWallpaperIntent(this))
     }
 
     private fun openLockScreen() {

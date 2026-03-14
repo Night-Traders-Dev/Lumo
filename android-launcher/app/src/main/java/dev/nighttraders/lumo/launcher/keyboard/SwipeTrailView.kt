@@ -1,4 +1,4 @@
-package dev.nighttraders.lumo.launcher.input
+package dev.nighttraders.lumo.launcher.keyboard
 
 import android.content.Context
 import android.graphics.Canvas

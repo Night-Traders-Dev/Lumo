@@ -1,4 +1,4 @@
-package dev.nighttraders.lumo.launcher.ui
+package dev.nighttraders.lumo.launcher.settings
 
 import android.content.Context
 import android.view.inputmethod.InputMethodInfo
@@ -35,6 +35,7 @@ import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.SwipeRight
 import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material.icons.rounded.Terminal
 import androidx.compose.material.icons.rounded.Wifi
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
@@ -114,10 +115,10 @@ fun LumoSettingsScreen(
     onOpenDisplaySettings: () -> Unit,
     onOpenWallpaperSettings: () -> Unit,
     hasUsageStatsPermission: Boolean = false,
-    onOpenAccessibilitySettings: () -> Unit = {},
     onOpenUsageAccessSettings: () -> Unit = {},
     onUpdateIntSetting: (String, Int) -> Unit = { _, _ -> },
     onUpdateBoolSetting: (String, Boolean) -> Unit = { _, _ -> },
+    onOpenDebugLog: () -> Unit = {},
     onRefresh: () -> Unit,
 ) {
     LazyColumn(
@@ -319,9 +320,11 @@ fun LumoSettingsScreen(
                 iconSizeDp = settings.appIconSizeDp,
                 gridColumns = settings.appGridColumns,
                 railWidthDp = settings.dashRailWidthDp,
+                dashIconSizeDp = settings.dashIconSizeDp,
                 onIconSizeChange = { onUpdateIntSetting("app_icon_size_dp", it) },
                 onGridColumnsChange = { onUpdateIntSetting("app_grid_columns", it) },
                 onRailWidthChange = { onUpdateIntSetting("dash_rail_width_dp", it) },
+                onDashIconSizeChange = { onUpdateIntSetting("dash_icon_size_dp", it) },
             )
         }
 
@@ -330,7 +333,6 @@ fun LumoSettingsScreen(
             GestureTogglesSection(
                 settings = settings,
                 onToggle = onUpdateBoolSetting,
-                onOpenAccessibilitySettings = onOpenAccessibilitySettings,
             )
         }
 
@@ -387,6 +389,20 @@ fun LumoSettingsScreen(
                         icon = Icons.Rounded.Palette,
                         label = "Wallpaper settings",
                         onClick = onOpenWallpaperSettings,
+                    ),
+                ),
+            )
+        }
+
+        item {
+            SettingSection(
+                title = "Developer",
+                subtitle = "Debug tools and diagnostics.",
+                actions = listOf(
+                    SettingAction(
+                        icon = Icons.Rounded.Terminal,
+                        label = "Open debug log",
+                        onClick = onOpenDebugLog,
                     ),
                 ),
             )
@@ -762,9 +778,11 @@ private fun AppearanceSection(
     iconSizeDp: Int,
     gridColumns: Int,
     railWidthDp: Int,
+    dashIconSizeDp: Int,
     onIconSizeChange: (Int) -> Unit,
     onGridColumnsChange: (Int) -> Unit,
     onRailWidthChange: (Int) -> Unit,
+    onDashIconSizeChange: (Int) -> Unit,
 ) {
     Surface(
         color = Color(0x55120B14),
@@ -809,6 +827,14 @@ private fun AppearanceSection(
                 steps = 3,
                 onValueChange = onRailWidthChange,
             )
+            SettingSlider(
+                label = "Dash Icon Size",
+                value = dashIconSizeDp,
+                valueLabel = "${dashIconSizeDp}dp",
+                range = 36f..64f,
+                steps = 6,
+                onValueChange = onDashIconSizeChange,
+            )
         }
     }
 }
@@ -819,7 +845,6 @@ private fun AppearanceSection(
 private fun GestureTogglesSection(
     settings: dev.nighttraders.lumo.launcher.data.LumoLauncherSettings,
     onToggle: (String, Boolean) -> Unit,
-    onOpenAccessibilitySettings: () -> Unit,
 ) {
     Surface(
         color = Color(0x55120B14),
@@ -840,12 +865,6 @@ private fun GestureTogglesSection(
                 color = Color(0xFFB8AFBA),
             )
 
-            SettingToggle(
-                label = "Back gesture (right edge)",
-                subtitle = "Swipe from right edge to go back in apps",
-                checked = settings.backGestureEnabled,
-                onCheckedChange = { onToggle("back_gesture_enabled", it) },
-            )
             SettingToggle(
                 label = "Bottom edge (app drawer)",
                 subtitle = "Swipe up from bottom to open apps",
@@ -871,14 +890,6 @@ private fun GestureTogglesSection(
                 onCheckedChange = { onToggle("indicator_swipe_enabled", it) },
             )
 
-            Spacer(modifier = Modifier.height(4.dp))
-            SettingActionRow(
-                action = SettingAction(
-                    icon = Icons.Rounded.Settings,
-                    label = "Open accessibility settings (back gesture)",
-                    onClick = onOpenAccessibilitySettings,
-                ),
-            )
         }
     }
 }
@@ -909,22 +920,6 @@ private fun GestureSensitivitySection(
                 color = Color(0xFFB8AFBA),
             )
 
-            SettingSlider(
-                label = "Back Gesture Width",
-                value = settings.backGestureWidthDp,
-                valueLabel = "${settings.backGestureWidthDp}dp",
-                range = 10f..40f,
-                steps = 5,
-                onValueChange = { onUpdate("back_gesture_width_dp", it) },
-            )
-            SettingSlider(
-                label = "Back Gesture Threshold",
-                value = settings.backGestureThresholdDp,
-                valueLabel = "${settings.backGestureThresholdDp}dp",
-                range = 20f..80f,
-                steps = 5,
-                onValueChange = { onUpdate("back_gesture_threshold_dp", it) },
-            )
             SettingSlider(
                 label = "Bottom Edge Height",
                 value = settings.bottomEdgeHeightDp,

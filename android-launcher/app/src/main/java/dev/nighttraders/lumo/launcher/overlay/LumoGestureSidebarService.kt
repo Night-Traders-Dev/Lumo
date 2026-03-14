@@ -3,6 +3,7 @@ package dev.nighttraders.lumo.launcher.overlay
 import android.accessibilityservice.AccessibilityService
 import android.app.ActivityManager
 import android.app.Service
+import android.app.KeyguardManager
 import android.content.Context
 import android.content.Intent
 import android.graphics.Canvas
@@ -115,8 +116,13 @@ class LumoGestureSidebarService : Service() {
         }
     }
 
+    private fun isDeviceLocked(): Boolean {
+        val keyguardManager = getSystemService(KeyguardManager::class.java)
+        return keyguardManager?.isKeyguardLocked == true
+    }
+
     private fun showRail() {
-        if (railView != null || !Settings.canDrawOverlays(this)) {
+        if (railView != null || !Settings.canDrawOverlays(this) || isDeviceLocked()) {
             return
         }
 
@@ -146,15 +152,6 @@ class LumoGestureSidebarService : Service() {
             setPadding(dp(8), dp(8), dp(8), dp(8))
             setBackgroundColor(Color.parseColor("#CC0E0A10"))
 
-            // Ubuntu BFB button at top
-            addView(createBfbButton {
-                hideRail()
-                startActivity(MainActivity.createHomeIntent(this@LumoGestureSidebarService))
-            })
-
-            // Separator
-            addView(createSeparator())
-
             // Pinned apps
             railApps.forEach { app ->
                 addView(createAppButton(app))
@@ -172,18 +169,18 @@ class LumoGestureSidebarService : Service() {
             // Separator
             addView(createSeparator())
 
-            // Apps grid button at bottom
-            addView(createAppsButton {
+            // Ubuntu symbol button at bottom — opens app drawer
+            addView(createUbuntuButton {
                 hideRail()
                 startActivity(MainActivity.createAppsIntent(this@LumoGestureSidebarService))
             })
         }
 
-    private fun createBfbButton(onClick: () -> Unit): View =
+    private fun createUbuntuButton(onClick: () -> Unit): View =
         FrameLayout(this).apply {
             val size = dp(52)
             layoutParams = LinearLayout.LayoutParams(size, size).apply {
-                bottomMargin = dp(2)
+                topMargin = dp(6)
             }
             background = GradientDrawable().apply {
                 shape = GradientDrawable.OVAL
@@ -191,74 +188,18 @@ class LumoGestureSidebarService : Service() {
             }
             setOnClickListener { onClick() }
 
-            val bfbDrawable = ContextCompat.getDrawable(
-                this@LumoGestureSidebarService,
-                R.drawable.ic_ubuntu_bfb,
-            )
             addView(
                 ImageView(this@LumoGestureSidebarService).apply {
                     layoutParams = FrameLayout.LayoutParams(dp(32), dp(32), Gravity.CENTER)
-                    setImageDrawable(bfbDrawable)
-                    setColorFilter(Color.WHITE)
-                },
-            )
-        }
-
-    private fun createAppsButton(onClick: () -> Unit): View =
-        FrameLayout(this).apply {
-            val size = dp(52)
-            layoutParams = LinearLayout.LayoutParams(size, size).apply {
-                topMargin = dp(6)
-            }
-            background = squircleDrawable(Color.parseColor("#55FFFFFF"))
-            setOnClickListener { onClick() }
-
-            addView(
-                ImageView(this@LumoGestureSidebarService).apply {
-                    layoutParams = FrameLayout.LayoutParams(dp(28), dp(28), Gravity.CENTER)
                     setImageDrawable(
                         ContextCompat.getDrawable(
                             this@LumoGestureSidebarService,
-                            android.R.drawable.ic_dialog_dialer,
+                            R.drawable.ic_ubuntu_symbol,
                         ),
                     )
                     setColorFilter(Color.WHITE)
                 },
             )
-
-            // Draw a 2x2 grid of dots as the "apps" icon
-            addView(object : View(this@LumoGestureSidebarService) {
-                private val dotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                    color = Color.WHITE
-                    style = Paint.Style.FILL
-                }
-
-                override fun onDraw(canvas: Canvas) {
-                    super.onDraw(canvas)
-                    val cx = width / 2f
-                    val cy = height / 2f
-                    val spacing = dp(7).toFloat()
-                    val radius = dp(3).toFloat()
-                    for (row in -1..1) {
-                        for (col in -1..1) {
-                            canvas.drawCircle(
-                                cx + col * spacing,
-                                cy + row * spacing,
-                                radius,
-                                dotPaint,
-                            )
-                        }
-                    }
-                }
-            }.apply {
-                layoutParams = FrameLayout.LayoutParams(
-                    FrameLayout.LayoutParams.MATCH_PARENT,
-                    FrameLayout.LayoutParams.MATCH_PARENT,
-                )
-            })
-
-            // Remove the ic_dialog_dialer - we drew the grid instead
-            removeViewAt(0)
         }
 
     private fun createSeparator(): View =
@@ -403,7 +344,7 @@ class LumoGestureSidebarService : Service() {
                 }
 
                 MotionEvent.ACTION_MOVE -> {
-                    if (event.rawX - startX > dp(26)) {
+                    if (event.rawX - startX > dp(26) && !isDeviceLocked()) {
                         showRail()
                         startX = event.rawX
                     }

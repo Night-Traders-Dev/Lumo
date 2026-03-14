@@ -1,4 +1,4 @@
-package dev.nighttraders.lumo.launcher
+package dev.nighttraders.lumo.launcher.settings
 
 import android.app.AppOpsManager
 import android.app.role.RoleManager
@@ -21,15 +21,15 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
+import dev.nighttraders.lumo.launcher.R
 import dev.nighttraders.lumo.launcher.data.LauncherPreferences
 import dev.nighttraders.lumo.launcher.data.LauncherRepository
 import dev.nighttraders.lumo.launcher.data.LumoLauncherSettings
 import dev.nighttraders.lumo.launcher.lockscreen.LumoLockScreenCompanionService
 import dev.nighttraders.lumo.launcher.overlay.LumoGestureSidebarService
 import dev.nighttraders.lumo.launcher.notifications.hasNotificationListenerAccess
-import dev.nighttraders.lumo.launcher.ui.LumoKeyboardStatus
-import dev.nighttraders.lumo.launcher.ui.LumoSettingsScreen
-import dev.nighttraders.lumo.launcher.ui.readLumoKeyboardStatus
+import dev.nighttraders.lumo.launcher.data.LumoDebugLog
+import dev.nighttraders.lumo.launcher.lockscreen.LockScreenActivity
 import dev.nighttraders.lumo.launcher.ui.theme.LumoLauncherTheme
 import dev.nighttraders.lumo.launcher.ui.isLauncherDefault
 import kotlinx.coroutines.launch
@@ -52,6 +52,24 @@ class SettingsActivity : ComponentActivity() {
     private val lockScreenSecurityType = mutableStateOf("none")
     private val hasUsageStatsPermission = mutableStateOf(false)
     private val launcherSettings = mutableStateOf(LumoLauncherSettings())
+    private val showDebugLog = mutableStateOf(false)
+    private val showWallpaperPicker = mutableStateOf(false)
+    private val pickImageLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        val uri = result.data?.data ?: return@registerForActivityResult
+        // Take persistent read permission so the URI survives reboots
+        runCatching {
+            contentResolver.takePersistableUriPermission(
+                uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION,
+            )
+        }
+        lifecycleScope.launch {
+            repository.updateSetting(LauncherPreferences.wallpaperPath, uri.toString())
+            loadLauncherSettings()
+        }
+    }
     private var lockScreenSecurityHash = ""
     private var lockScreenSecuritySalt = ""
 
@@ -62,8 +80,41 @@ class SettingsActivity : ComponentActivity() {
         refreshStatus()
         loadLauncherSettings()
 
+        LumoDebugLog.logKnownIssues()
+
+        if (intent?.getBooleanExtra(EXTRA_OPEN_WALLPAPER, false) == true) {
+            showWallpaperPicker.value = true
+        }
+
         setContent {
             LumoLauncherTheme {
+                if (showDebugLog.value) {
+                    LumoDebugScreen(onBack = { showDebugLog.value = false })
+                    return@LumoLauncherTheme
+                }
+
+                if (showWallpaperPicker.value) {
+                    WallpaperPickerScreen(
+                        currentPath = launcherSettings.value.wallpaperPath,
+                        onSelectWallpaper = { path ->
+                            lifecycleScope.launch {
+                                repository.updateSetting(LauncherPreferences.wallpaperPath, path)
+                                loadLauncherSettings()
+                            }
+                        },
+                        onPickCustomImage = {
+                            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                                addCategory(Intent.CATEGORY_OPENABLE)
+                                type = "image/*"
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+                            }
+                            pickImageLauncher.launch(intent)
+                        },
+                        onBack = { showWallpaperPicker.value = false },
+                    )
+                    return@LumoLauncherTheme
+                }
+
                 LumoSettingsScreen(
                     isDefaultHome = isDefaultHome.value,
                     hasNotificationAccess = hasNotificationAccess.value,
@@ -92,14 +143,12 @@ class SettingsActivity : ComponentActivity() {
                     onVerifyCurrentSecurity = ::verifyCurrentSecurity,
                     onOpenWifiSettings = { startActivity(Intent(Settings.ACTION_WIFI_SETTINGS)) },
                     onOpenDisplaySettings = { startActivity(Intent(Settings.ACTION_DISPLAY_SETTINGS)) },
-                    onOpenWallpaperSettings = { startActivity(Intent(Intent.ACTION_SET_WALLPAPER)) },
+                    onOpenWallpaperSettings = { showWallpaperPicker.value = true },
                     hasUsageStatsPermission = hasUsageStatsPermission.value,
-                    onOpenAccessibilitySettings = {
-                        startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-                    },
                     onOpenUsageAccessSettings = ::openUsageAccessSettings,
                     onUpdateIntSetting = { key, value -> updateIntSetting(key, value) },
                     onUpdateBoolSetting = { key, value -> updateBoolSetting(key, value) },
+                    onOpenDebugLog = { showDebugLog.value = true },
                     onRefresh = ::refreshStatus,
                 )
             }
@@ -309,8 +358,13 @@ class SettingsActivity : ComponentActivity() {
     }
 
     companion object {
+        private const val EXTRA_OPEN_WALLPAPER = "open_wallpaper_picker"
+
         fun createIntent(context: Context): Intent =
             Intent(context, SettingsActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+
+        fun createWallpaperIntent(context: Context): Intent =
+            createIntent(context).putExtra(EXTRA_OPEN_WALLPAPER, true)
     }
 }
