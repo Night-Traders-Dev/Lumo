@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.hardware.camera2.CameraManager
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
@@ -16,6 +17,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
 import androidx.core.content.ContextCompat
 import androidx.core.content.IntentCompat
@@ -24,6 +26,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
 import dev.nighttraders.lumo.launcher.data.LauncherRepository
+import dev.nighttraders.lumo.launcher.lockscreen.LumoLockState
 import dev.nighttraders.lumo.launcher.overlay.LumoGestureSidebarService
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.nighttraders.lumo.launcher.notifications.hasNotificationListenerAccess
@@ -38,6 +41,10 @@ class MainActivity : ComponentActivity() {
     private val viewModel: LauncherViewModel by viewModels { LauncherViewModel.Factory }
     private val repository by lazy { LauncherRepository(applicationContext) }
     private val requestedPageIndex = mutableIntStateOf(START_PAGE_HOME)
+    private val lockScreenSecurityType = mutableStateOf("none")
+    private val lockScreenSecurityHash = mutableStateOf("")
+    private val lockScreenSecuritySalt = mutableStateOf("")
+    private val isFlashlightOn = mutableStateOf(false)
     private val screenReceiver = LumoUnlockReceiver()
     private val requestRoleLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
@@ -53,12 +60,15 @@ class MainActivity : ComponentActivity() {
         configureSystemBars()
         refreshDefaultHomeState()
         registerScreenReceiver()
+        registerFlashlightCallback()
         requestActivityRecognitionIfNeeded()
+        loadSecurityState()
 
         setContent {
             val uiState by viewModel.uiState.collectAsStateWithLifecycle()
             val isDefaultHome by viewModel.isDefaultHome.collectAsStateWithLifecycle()
             val systemStatus by rememberSystemStatus()
+            val isDashLocked by LumoLockState.isLocked.collectAsStateWithLifecycle()
 
             LumoLauncherTheme {
                 LumoLauncherApp(
@@ -66,10 +76,24 @@ class MainActivity : ComponentActivity() {
                     systemStatus = systemStatus,
                     isDefaultHome = isDefaultHome,
                     requestedPageIndex = requestedPageIndex.intValue,
+                    isDashLocked = isDashLocked && lockScreenSecurityType.value != "none",
+                    lockScreenSecurityType = lockScreenSecurityType.value,
+                    onVerifyPin = { input ->
+                        val sanitized = LockScreenActivity.sanitizeInput(input)
+                        if (sanitized.isEmpty() || lockScreenSecurityHash.value.isEmpty()) false
+                        else LockScreenActivity.hashWithSalt(sanitized, lockScreenSecuritySalt.value) == lockScreenSecurityHash.value
+                    },
+                    onDashUnlock = { LumoLockState.unlock() },
                     onRequestDefaultHome = ::requestDefaultHomeRole,
                     onOpenSettings = ::openSettings,
                     onOpenLockScreen = ::openLockScreen,
                     onRequestNotificationAccess = ::requestNotificationAccess,
+                    onOpenWifiSettings = { startActivity(Intent(Settings.ACTION_WIFI_SETTINGS)) },
+                    onOpenBluetoothSettings = { startActivity(Intent(Settings.ACTION_BLUETOOTH_SETTINGS)) },
+                    onOpenAirplaneSettings = { startActivity(Intent(Settings.ACTION_AIRPLANE_MODE_SETTINGS)) },
+                    onToggleFlashlight = ::toggleFlashlight,
+                    onOpenLocationSettings = { startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)) },
+                    isFlashlightOn = isFlashlightOn.value,
                     onLaunchApp = { app ->
                         val result = viewModel.launchApp(app)
                         if (result.isFailure) {
@@ -162,8 +186,17 @@ class MainActivity : ComponentActivity() {
         refreshNotificationAccessState()
         viewModel.refreshApps()
         viewModel.refreshNotifications()
+        loadSecurityState()
         lifecycleScope.launch {
             LumoGestureSidebarService.sync(this@MainActivity, repository.isOverlaySidebarEnabled())
+        }
+    }
+
+    private fun loadSecurityState() {
+        lifecycleScope.launch {
+            lockScreenSecurityType.value = repository.getLockScreenSecurityType()
+            lockScreenSecurityHash.value = repository.getLockScreenSecurityHash()
+            lockScreenSecuritySalt.value = repository.getLockScreenSecuritySalt()
         }
     }
 
@@ -218,6 +251,26 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         runCatching { unregisterReceiver(screenReceiver) }
         super.onDestroy()
+    }
+
+    private fun toggleFlashlight() {
+        val cameraManager = getSystemService(CameraManager::class.java) ?: return
+        val cameraId = runCatching { cameraManager.cameraIdList.firstOrNull() }.getOrNull() ?: return
+        val newState = !isFlashlightOn.value
+        runCatching { cameraManager.setTorchMode(cameraId, newState) }
+            .onSuccess { isFlashlightOn.value = newState }
+            .onFailure {
+                Toast.makeText(this, "Could not toggle flashlight", Toast.LENGTH_SHORT).show()
+            }
+    }
+
+    private fun registerFlashlightCallback() {
+        val cameraManager = getSystemService(CameraManager::class.java) ?: return
+        cameraManager.registerTorchCallback(object : CameraManager.TorchCallback() {
+            override fun onTorchModeChanged(cameraId: String, enabled: Boolean) {
+                isFlashlightOn.value = enabled
+            }
+        }, null)
     }
 
     private fun requestActivityRecognitionIfNeeded() {

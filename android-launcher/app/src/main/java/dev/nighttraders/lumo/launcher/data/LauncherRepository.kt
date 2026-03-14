@@ -138,10 +138,14 @@ class LauncherRepository(private val context: Context) {
     suspend fun getLockScreenSecurityHash(): String =
         context.launcherPreferences.data.first()[LauncherPreferences.lockScreenSecurityHash].orEmpty()
 
-    suspend fun setLockScreenSecurity(type: String, hash: String) {
+    suspend fun getLockScreenSecuritySalt(): String =
+        context.launcherPreferences.data.first()[LauncherPreferences.lockScreenSecuritySalt].orEmpty()
+
+    suspend fun setLockScreenSecurity(type: String, hash: String, salt: String) {
         context.launcherPreferences.edit { preferences ->
             preferences[LauncherPreferences.lockScreenSecurityType] = type
             preferences[LauncherPreferences.lockScreenSecurityHash] = hash
+            preferences[LauncherPreferences.lockScreenSecuritySalt] = salt
         }
     }
 
@@ -149,6 +153,7 @@ class LauncherRepository(private val context: Context) {
         context.launcherPreferences.edit { preferences ->
             preferences[LauncherPreferences.lockScreenSecurityType] = "none"
             preferences.remove(LauncherPreferences.lockScreenSecurityHash)
+            preferences.remove(LauncherPreferences.lockScreenSecuritySalt)
         }
     }
 

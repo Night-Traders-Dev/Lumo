@@ -11,4 +11,5 @@ internal object LauncherPreferences {
     val lockScreenCompanionEnabled = booleanPreferencesKey("lock_screen_companion_enabled")
     val lockScreenSecurityType = stringPreferencesKey("lock_screen_security_type") // "none", "pin", "password"
     val lockScreenSecurityHash = stringPreferencesKey("lock_screen_security_hash")
+    val lockScreenSecuritySalt = stringPreferencesKey("lock_screen_security_salt")
 }

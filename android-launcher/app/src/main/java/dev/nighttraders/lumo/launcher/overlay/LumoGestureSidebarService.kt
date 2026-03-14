@@ -1,5 +1,6 @@
 package dev.nighttraders.lumo.launcher.overlay
 
+import android.accessibilityservice.AccessibilityService
 import android.app.ActivityManager
 import android.app.Service
 import android.content.Context

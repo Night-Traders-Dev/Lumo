@@ -73,8 +73,11 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
     private var backspaceRepeating = false
     private val backspaceRepeatRunnable = object : Runnable {
         override fun run() {
+            if (!backspaceRepeating) return
             backspace()
-            repeatHandler.postDelayed(this, BACKSPACE_REPEAT_INTERVAL_MS)
+            if (backspaceRepeating) {
+                repeatHandler.postDelayed(this, BACKSPACE_REPEAT_INTERVAL_MS)
+            }
         }
     }
 
@@ -1226,8 +1229,8 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
                 }
 
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    repeatHandler.removeCallbacksAndMessages(null)
                     backspaceRepeating = false
+                    repeatHandler.removeCallbacksAndMessages(null)
                     true
                 }
 

@@ -16,6 +16,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -36,9 +37,6 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.PagerDefaults
-import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -99,13 +97,15 @@ import kotlin.math.pow
 import kotlin.math.sign
 import dev.nighttraders.lumo.launcher.data.LaunchableApp
 import dev.nighttraders.lumo.launcher.notifications.LauncherNotification
+import dev.nighttraders.lumo.launcher.notifications.LauncherNotificationCenter
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.time.LocalDate
 import java.util.Locale
 
 private enum class ScopePage(val title: String) {
     Home("Today"),
-    Apps("Apps"),
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -115,10 +115,20 @@ fun LumoLauncherApp(
     systemStatus: SystemStatusSnapshot,
     isDefaultHome: Boolean,
     requestedPageIndex: Int,
+    isDashLocked: Boolean = false,
+    lockScreenSecurityType: String = "none",
+    onVerifyPin: (String) -> Boolean = { false },
+    onDashUnlock: () -> Unit = {},
     onRequestDefaultHome: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenLockScreen: () -> Unit,
     onRequestNotificationAccess: () -> Unit,
+    onOpenWifiSettings: () -> Unit = {},
+    onOpenBluetoothSettings: () -> Unit = {},
+    onOpenAirplaneSettings: () -> Unit = {},
+    onToggleFlashlight: () -> Unit = {},
+    onOpenLocationSettings: () -> Unit = {},
+    isFlashlightOn: Boolean = false,
     onLaunchApp: (LaunchableApp) -> Unit,
     onOpenNotification: (LauncherNotification) -> Unit,
     onOpenNotificationApp: (LauncherNotification) -> Unit,
@@ -135,13 +145,35 @@ fun LumoLauncherApp(
     var railVisible by rememberSaveable { mutableStateOf(false) }
     var notificationActionTarget by remember { mutableStateOf<LauncherNotification?>(null) }
     var appActionTarget by remember { mutableStateOf<LaunchableApp?>(null) }
-    val pagerState = rememberPagerState(
-        initialPage = requestedPageIndex.coerceIn(0, ScopePage.entries.lastIndex),
-        pageCount = { ScopePage.entries.size },
-    )
-    val coroutineScope = rememberCoroutineScope()
+    var showSwipeHint by rememberSaveable { mutableStateOf(false) }
+    var swipeHintShown by rememberSaveable { mutableStateOf(false) }
+    var appsOverlayFromBottom by rememberSaveable { mutableStateOf(false) }
+    var appsOverlayFromSide by rememberSaveable { mutableStateOf(false) }
+    var showMultitask by rememberSaveable { mutableStateOf(false) }
 
-    val currentPage = ScopePage.entries[pagerState.currentPage]
+    // Show swipe hint once after first load
+    LaunchedEffect(uiState.isLoading, isDashLocked) {
+        if (!uiState.isLoading && !isDashLocked && !swipeHintShown) {
+            swipeHintShown = true
+            showSwipeHint = true
+            delay(3000)
+            showSwipeHint = false
+        }
+    }
+
+    // If dash is locked, show the lock screen instead of the dash
+    if (isDashLocked) {
+        val notifications by LauncherNotificationCenter.notifications.collectAsStateWithLifecycle()
+        LumoLockScreenScreen(
+            status = systemStatus,
+            notifications = notifications,
+            securityType = lockScreenSecurityType,
+            onUnlock = onDashUnlock,
+            onVerifyPin = onVerifyPin,
+        )
+        return
+    }
+
     val launcherApps = remember(uiState.favorites, uiState.featuredApps) {
         uiState.favorites.ifEmpty { uiState.featuredApps }.take(6)
     }
@@ -157,12 +189,6 @@ fun LumoLauncherApp(
         }
     }
 
-    LaunchedEffect(currentPage) {
-        if (currentPage != ScopePage.Home) {
-            railVisible = false
-        }
-    }
-
     LaunchedEffect(indicatorsExpanded) {
         if (indicatorsExpanded) {
             railVisible = false
@@ -175,27 +201,20 @@ fun LumoLauncherApp(
         onDismissHeadsUpNotification(headsUp.key)
     }
 
-    LaunchedEffect(requestedPageIndex) {
-        val pageIndex = requestedPageIndex.coerceIn(0, ScopePage.entries.lastIndex)
-        if (pagerState.currentPage != pageIndex) {
-            pagerState.scrollToPage(pageIndex)
+    fun openApps(fromBottom: Boolean = false) {
+        railVisible = false
+        indicatorsExpanded = false
+        if (fromBottom) {
+            appsOverlayFromBottom = true
+        } else {
+            appsOverlayFromSide = true
         }
     }
 
-    fun navigateTo(page: ScopePage) {
+    fun goHome() {
         railVisible = false
-        if (page == ScopePage.Apps) {
-            indicatorsExpanded = false
-        }
-        coroutineScope.launch {
-            pagerState.animateScrollToPage(
-                page = page.ordinal,
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioLowBouncy,
-                    stiffness = Spring.StiffnessLow,
-                ),
-            )
-        }
+        appsOverlayFromBottom = false
+        appsOverlayFromSide = false
     }
 
     Box(
@@ -221,7 +240,6 @@ fun LumoLauncherApp(
                 .padding(horizontal = 8.dp, vertical = 6.dp),
         ) {
             UbuntuTouchTopBar(
-                currentPage = currentPage,
                 status = systemStatus,
                 activeNotificationCount = uiState.activeNotificationCount,
                 hasNotificationAccess = uiState.hasNotificationAccess,
@@ -229,7 +247,7 @@ fun LumoLauncherApp(
                 onToggleIndicators = { indicatorsExpanded = !indicatorsExpanded },
                 onExpandIndicators = { indicatorsExpanded = true },
                 onCollapseIndicators = { indicatorsExpanded = false },
-                onOpenApps = { navigateTo(ScopePage.Apps) },
+                onOpenApps = { openApps() },
             )
 
             if (!isDefaultHome) {
@@ -249,68 +267,148 @@ fun LumoLauncherApp(
                     .weight(1f)
                     .padding(top = 8.dp),
             ) {
-                HorizontalPager(
-                    state = pagerState,
-                    modifier = Modifier.fillMaxSize(),
-                    beyondViewportPageCount = 1,
-                    flingBehavior = PagerDefaults.flingBehavior(
-                        state = pagerState,
-                        snapAnimationSpec = spring(
-                            dampingRatio = Spring.DampingRatioLowBouncy,
-                            stiffness = Spring.StiffnessLow,
-                        ),
-                    ),
-                ) { page ->
-                    when (ScopePage.entries[page]) {
-                        ScopePage.Home -> HomeScopePage(
-                            status = systemStatus,
-                            pinnedApps = uiState.favorites,
-                            recentApps = uiState.recentApps,
-                            hasNotificationAccess = uiState.hasNotificationAccess,
-                            notifications = uiState.recentNotifications,
-                            onRequestNotificationAccess = onRequestNotificationAccess,
-                            onOpenNotification = onOpenNotification,
-                            onLongPressNotification = { notificationActionTarget = it },
-                            onDismissNotification = onDismissNotification,
-                            onLaunchApp = onLaunchApp,
-                        )
-
-                        ScopePage.Apps -> AppsScopePage(
-                            apps = visibleApps,
-                            favoriteKeys = uiState.favoriteKeys,
-                            isLoading = uiState.isLoading,
-                            searchQuery = searchQuery,
-                            onSearchQueryChange = { searchQuery = it },
-                            onLaunchApp = onLaunchApp,
-                            onLongPressApp = { appActionTarget = it },
-                        )
-                    }
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .pointerInput(appsOverlayFromSide) {
+                            var totalDrag = 0f
+                            detectHorizontalDragGestures(
+                                onHorizontalDrag = { _, dragAmount ->
+                                    totalDrag += dragAmount
+                                },
+                                onDragCancel = { totalDrag = 0f },
+                                onDragEnd = {
+                                    when {
+                                        !appsOverlayFromSide && totalDrag < -80f -> openApps(fromBottom = false)
+                                        appsOverlayFromSide && totalDrag > 80f -> goHome()
+                                    }
+                                    totalDrag = 0f
+                                },
+                            )
+                        },
+                ) {
+                    HomeScopePage(
+                        status = systemStatus,
+                        pinnedApps = uiState.favorites,
+                        recentApps = uiState.recentApps,
+                        hasNotificationAccess = uiState.hasNotificationAccess,
+                        notifications = uiState.recentNotifications,
+                        onRequestNotificationAccess = onRequestNotificationAccess,
+                        onOpenNotification = onOpenNotification,
+                        onLongPressNotification = { notificationActionTarget = it },
+                        onDismissNotification = onDismissNotification,
+                        onLaunchApp = onLaunchApp,
+                    )
                 }
 
-                PagerDots(
-                    currentPage = pagerState.currentPage,
-                    pageCount = ScopePage.entries.size,
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(bottom = 14.dp),
-                )
+                val appsVisible = appsOverlayFromBottom || appsOverlayFromSide
+
+                // Apps overlay sliding from bottom when triggered by swipe-up
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = appsOverlayFromBottom,
+                    modifier = Modifier.fillMaxSize(),
+                    enter = slideInVertically(
+                        initialOffsetY = { it },
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioLowBouncy,
+                            stiffness = Spring.StiffnessMediumLow,
+                        ),
+                    ) + fadeIn(animationSpec = tween(200)),
+                    exit = slideOutVertically(
+                        targetOffsetY = { it },
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioNoBouncy,
+                            stiffness = Spring.StiffnessMedium,
+                        ),
+                    ) + fadeOut(animationSpec = tween(150)),
+                ) {
+                    AppsScopePage(
+                        apps = visibleApps,
+                        favoriteKeys = uiState.favoriteKeys,
+                        isLoading = uiState.isLoading,
+                        searchQuery = searchQuery,
+                        onSearchQueryChange = { searchQuery = it },
+                        onLaunchApp = onLaunchApp,
+                        onLongPressApp = { appActionTarget = it },
+                    )
+                }
+
+                // Apps overlay sliding from right when triggered by horizontal swipe
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = appsOverlayFromSide,
+                    modifier = Modifier.fillMaxSize(),
+                    enter = slideInHorizontally(
+                        initialOffsetX = { it },
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioLowBouncy,
+                            stiffness = Spring.StiffnessMediumLow,
+                        ),
+                    ) + fadeIn(animationSpec = tween(200)),
+                    exit = slideOutHorizontally(
+                        targetOffsetX = { it },
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioNoBouncy,
+                            stiffness = Spring.StiffnessMedium,
+                        ),
+                    ) + fadeOut(animationSpec = tween(150)),
+                ) {
+                    AppsScopePage(
+                        apps = visibleApps,
+                        favoriteKeys = uiState.favoriteKeys,
+                        isLoading = uiState.isLoading,
+                        searchQuery = searchQuery,
+                        onSearchQueryChange = { searchQuery = it },
+                        onLaunchApp = onLaunchApp,
+                        onLongPressApp = { appActionTarget = it },
+                    )
+                }
 
                 BottomEdgeGestureHandle(
                     modifier = Modifier.align(Alignment.BottomCenter),
-                    currentPage = currentPage,
-                    onGoHome = { navigateTo(ScopePage.Home) },
-                    onOpenApps = { navigateTo(ScopePage.Apps) },
+                    appsVisible = appsVisible,
+                    onGoHome = { goHome() },
+                    onOpenApps = { openApps(fromBottom = true) },
+                    onDismissApps = { goHome() },
                 )
 
-                if (currentPage == ScopePage.Home && !indicatorsExpanded) {
+                if (!appsVisible && !indicatorsExpanded) {
                     LeftEdgeRevealHandle(
                         modifier = Modifier.align(Alignment.CenterStart),
                         railVisible = railVisible,
                         onRevealRail = { railVisible = true },
                     )
+
+                    // Multitask gesture: left-to-right swipe on center area (not edge)
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.CenterStart)
+                            .padding(start = 40.dp) // offset from edge to not conflict with rail gesture
+                            .fillMaxHeight()
+                            .fillMaxWidth(0.4f)
+                            .pointerInput(Unit) {
+                                var startX = 0f
+                                var totalDrag = 0f
+                                detectHorizontalDragGestures(
+                                    onDragStart = { offset ->
+                                        startX = offset.x
+                                        totalDrag = 0f
+                                    },
+                                    onHorizontalDrag = { _, dragAmount ->
+                                        if (dragAmount > 0f) totalDrag += dragAmount
+                                    },
+                                    onDragCancel = { totalDrag = 0f },
+                                    onDragEnd = {
+                                        if (totalDrag > 80f) {
+                                            showMultitask = true
+                                        }
+                                        totalDrag = 0f
+                                    },
+                                )
+                            },
+                    )
                 }
 
-                if (railVisible && currentPage == ScopePage.Home) {
+                if (railVisible) {
                     val dismissInteraction = remember { MutableInteractionSource() }
                     Box(
                         modifier = Modifier
@@ -324,7 +422,7 @@ fun LumoLauncherApp(
                 }
 
                 androidx.compose.animation.AnimatedVisibility(
-                    visible = railVisible && currentPage == ScopePage.Home,
+                    visible = railVisible,
                     modifier = Modifier
                         .align(Alignment.CenterStart)
                         .padding(start = 2.dp, top = 6.dp, bottom = 8.dp),
@@ -344,10 +442,10 @@ fun LumoLauncherApp(
                     ) + fadeOut(animationSpec = tween(150)),
                 ) {
                     UbuntuTouchLauncherRail(
-                        currentPage = currentPage,
+                        appsVisible = appsVisible,
                         apps = launcherApps,
-                        onGoHome = { navigateTo(ScopePage.Home) },
-                        onOpenApps = { navigateTo(ScopePage.Apps) },
+                        onGoHome = { goHome() },
+                        onOpenApps = { openApps() },
                         onOpenSettings = onOpenSettings,
                         onLaunchApp = { app ->
                             railVisible = false
@@ -407,11 +505,17 @@ fun LumoLauncherApp(
                     isDefaultHome = isDefaultHome,
                     hasNotificationAccess = uiState.hasNotificationAccess,
                     notifications = uiState.recentNotifications,
+                    isFlashlightOn = isFlashlightOn,
                     onRefresh = onRefresh,
                     onRequestDefaultHome = onRequestDefaultHome,
                     onOpenSettings = onOpenSettings,
                     onOpenLockScreen = onOpenLockScreen,
                     onRequestNotificationAccess = onRequestNotificationAccess,
+                    onOpenWifiSettings = onOpenWifiSettings,
+                    onOpenBluetoothSettings = onOpenBluetoothSettings,
+                    onOpenAirplaneSettings = onOpenAirplaneSettings,
+                    onToggleFlashlight = onToggleFlashlight,
+                    onOpenLocationSettings = onOpenLocationSettings,
                     onOpenNotification = onOpenNotification,
                     onLongPressNotification = { notificationActionTarget = it },
                     onDismissNotification = onDismissNotification,
@@ -483,6 +587,220 @@ fun LumoLauncherApp(
                 },
             )
         }
+
+        // Multitask / recent apps overlay (Ubuntu Touch style)
+        if (showMultitask) {
+            MultitaskOverlay(
+                recentApps = uiState.recentApps,
+                allApps = uiState.apps,
+                onLaunchApp = { app ->
+                    showMultitask = false
+                    onLaunchApp(app)
+                },
+                onDismiss = { showMultitask = false },
+            )
+        }
+
+        // Loafjet-style swipe hint toast
+        LumoToast(
+            visible = showSwipeHint,
+            message = "Swipe up for Apps",
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 60.dp),
+        )
+    }
+}
+
+@Composable
+private fun LumoToast(
+    visible: Boolean,
+    message: String,
+    modifier: Modifier = Modifier,
+) {
+    androidx.compose.animation.AnimatedVisibility(
+        visible = visible,
+        modifier = modifier,
+        enter = fadeIn(animationSpec = tween(300)) + slideInVertically(
+            initialOffsetY = { it / 2 },
+            animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+        ),
+        exit = fadeOut(animationSpec = tween(400)) + slideOutVertically(
+            targetOffsetY = { it / 2 },
+            animationSpec = tween(300),
+        ),
+    ) {
+        Surface(
+            color = Color(0xDD1A1420),
+            shape = RoundedCornerShape(24.dp),
+            shadowElevation = 8.dp,
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(4.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFFE95420)),
+                )
+                Text(
+                    text = message,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = Color(0xFFE7DFEA),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MultitaskOverlay(
+    recentApps: List<LaunchableApp>,
+    allApps: List<LaunchableApp>,
+    onLaunchApp: (LaunchableApp) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val appsToShow = remember(recentApps, allApps) {
+        recentApps.ifEmpty { allApps.take(6) }.take(8)
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(
+                brush = Brush.verticalGradient(
+                    colors = listOf(
+                        Color(0xF00C0A10),
+                        Color(0xF01A0816),
+                        Color(0xF02C001E),
+                    ),
+                ),
+            )
+            .pointerInput(Unit) {
+                detectTapGestures { onDismiss() }
+            }
+            .windowInsetsPadding(WindowInsets.systemBars)
+            .padding(horizontal = 16.dp, vertical = 20.dp),
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            // Header
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 20.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "Running Apps",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                )
+                Text(
+                    text = "Tap to dismiss",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = Color(0x99FFFFFF),
+                )
+            }
+
+            if (appsToShow.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = "No recent apps",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = Color(0xFF777777),
+                    )
+                }
+            } else {
+                // Ubuntu Touch style: 2-column grid of app cards
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(2),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    items(appsToShow, key = { it.componentKey }) { app ->
+                        MultitaskAppCard(
+                            app = app,
+                            onClick = { onLaunchApp(app) },
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MultitaskAppCard(
+    app: LaunchableApp,
+    onClick: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(160.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .clickable(onClick = onClick),
+        color = Color(0x33FFFFFF),
+        shape = RoundedCornerShape(16.dp),
+        shadowElevation = 6.dp,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    brush = Brush.verticalGradient(
+                        colors = listOf(
+                            Color(0x221A1420),
+                            Color(0x44000000),
+                        ),
+                    ),
+                )
+                .padding(12.dp),
+            verticalArrangement = Arrangement.SpaceBetween,
+        ) {
+            // App icon + name at top
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                AppIcon(app = app, size = 32.dp)
+                Text(
+                    text = app.label,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = Color.White,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+
+            // Placeholder content area (simulated window)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .padding(top = 8.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0x22FFFFFF)),
+                contentAlignment = Alignment.Center,
+            ) {
+                AppIcon(app = app, size = 40.dp)
+            }
+        }
     }
 }
 
@@ -525,15 +843,16 @@ private fun LeftEdgeRevealHandle(
 @Composable
 private fun BottomEdgeGestureHandle(
     modifier: Modifier = Modifier,
-    currentPage: ScopePage,
+    appsVisible: Boolean,
     onGoHome: () -> Unit,
     onOpenApps: () -> Unit,
+    onDismissApps: () -> Unit,
 ) {
     Box(
         modifier = modifier
             .fillMaxWidth()
             .height(70.dp)
-            .pointerInput(currentPage) {
+            .pointerInput(appsVisible) {
                 var totalDrag = 0f
                 detectVerticalDragGestures(
                     onVerticalDrag = { _, dragAmount ->
@@ -542,8 +861,8 @@ private fun BottomEdgeGestureHandle(
                     onDragCancel = { totalDrag = 0f },
                     onDragEnd = {
                         when {
-                            currentPage == ScopePage.Home && totalDrag < -42f -> onOpenApps()
-                            currentPage == ScopePage.Apps && totalDrag > 42f -> onGoHome()
+                            appsVisible && totalDrag > 42f -> onDismissApps()
+                            !appsVisible && totalDrag < -42f -> onOpenApps()
                         }
                         totalDrag = 0f
                     },
@@ -581,7 +900,6 @@ private fun UbuntuTouchBackdrop() {
 
 @Composable
 private fun UbuntuTouchTopBar(
-    currentPage: ScopePage,
     status: SystemStatusSnapshot,
     activeNotificationCount: Int,
     hasNotificationAccess: Boolean,
@@ -668,11 +986,17 @@ private fun IndicatorsSheet(
     isDefaultHome: Boolean,
     hasNotificationAccess: Boolean,
     notifications: List<LauncherNotification>,
+    isFlashlightOn: Boolean,
     onRefresh: () -> Unit,
     onRequestDefaultHome: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenLockScreen: () -> Unit,
     onRequestNotificationAccess: () -> Unit,
+    onOpenWifiSettings: () -> Unit,
+    onOpenBluetoothSettings: () -> Unit,
+    onOpenAirplaneSettings: () -> Unit,
+    onToggleFlashlight: () -> Unit,
+    onOpenLocationSettings: () -> Unit,
     onOpenNotification: (LauncherNotification) -> Unit,
     onLongPressNotification: (LauncherNotification) -> Unit,
     onDismissNotification: (LauncherNotification) -> Result<Unit>,
@@ -707,21 +1031,21 @@ private fun IndicatorsSheet(
                     label = status.networkLabel,
                     active = status.networkLabel != "Offline",
                     modifier = Modifier.weight(1f),
-                    onClick = {},
+                    onClick = onOpenWifiSettings,
                 )
                 QuickToggleTile(
                     icon = Icons.Rounded.Bluetooth,
-                    label = "Bluetooth",
-                    active = false,
+                    label = if (status.isBluetoothEnabled) "On" else "Off",
+                    active = status.isBluetoothEnabled,
                     modifier = Modifier.weight(1f),
-                    onClick = {},
+                    onClick = onOpenBluetoothSettings,
                 )
                 QuickToggleTile(
                     icon = Icons.Rounded.AirplanemodeActive,
-                    label = "Airplane",
-                    active = false,
+                    label = if (status.isAirplaneModeOn) "On" else "Off",
+                    active = status.isAirplaneModeOn,
                     modifier = Modifier.weight(1f),
-                    onClick = {},
+                    onClick = onOpenAirplaneSettings,
                 )
             }
 
@@ -733,17 +1057,17 @@ private fun IndicatorsSheet(
             ) {
                 QuickToggleTile(
                     icon = Icons.Rounded.FlashlightOn,
-                    label = "Flashlight",
-                    active = false,
+                    label = if (isFlashlightOn) "On" else "Off",
+                    active = isFlashlightOn,
                     modifier = Modifier.weight(1f),
-                    onClick = {},
+                    onClick = onToggleFlashlight,
                 )
                 QuickToggleTile(
                     icon = Icons.Rounded.LocationOn,
-                    label = "Location",
-                    active = false,
+                    label = if (status.isLocationEnabled) "On" else "Off",
+                    active = status.isLocationEnabled,
                     modifier = Modifier.weight(1f),
-                    onClick = {},
+                    onClick = onOpenLocationSettings,
                 )
                 QuickToggleTile(
                     icon = Icons.Rounded.Notifications,
@@ -996,7 +1320,7 @@ private fun DefaultHomePill(
 
 @Composable
 private fun UbuntuTouchLauncherRail(
-    currentPage: ScopePage,
+    appsVisible: Boolean,
     apps: List<LaunchableApp>,
     onGoHome: () -> Unit,
     onOpenApps: () -> Unit,
@@ -1025,7 +1349,7 @@ private fun UbuntuTouchLauncherRail(
                     .size(52.dp)
                     .clip(CircleShape)
                     .background(
-                        if (currentPage == ScopePage.Home) {
+                        if (!appsVisible) {
                             Color(0xFFE95420)
                         } else {
                             Color(0x44FFFFFF)
@@ -1075,7 +1399,7 @@ private fun UbuntuTouchLauncherRail(
                     .size(52.dp)
                     .clip(dockSquircle)
                     .background(
-                        if (currentPage == ScopePage.Apps) {
+                        if (appsVisible) {
                             Color(0xFFE95420)
                         } else {
                             Color(0x33FFFFFF)
@@ -1215,14 +1539,6 @@ private fun HomeScopePage(
             }
         }
 
-        Text(
-            text = "Swipe up for Apps",
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = 44.dp),
-            style = MaterialTheme.typography.labelLarge,
-            color = Color(0x99FFFFFF),
-        )
     }
 }
 

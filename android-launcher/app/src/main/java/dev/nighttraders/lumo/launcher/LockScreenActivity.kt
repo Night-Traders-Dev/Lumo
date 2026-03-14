@@ -17,17 +17,20 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import dev.nighttraders.lumo.launcher.data.LauncherRepository
 import dev.nighttraders.lumo.launcher.lockscreen.LumoLockScreenCompanionService
+import dev.nighttraders.lumo.launcher.lockscreen.LumoLockState
 import dev.nighttraders.lumo.launcher.notifications.LauncherNotificationCenter
 import dev.nighttraders.lumo.launcher.ui.LumoLockScreenScreen
 import dev.nighttraders.lumo.launcher.ui.rememberSystemStatus
 import dev.nighttraders.lumo.launcher.ui.theme.LumoLauncherTheme
 import kotlinx.coroutines.launch
 import java.security.MessageDigest
+import java.security.SecureRandom
 
 class LockScreenActivity : ComponentActivity() {
     private val repository by lazy { LauncherRepository(applicationContext) }
     private var securityType by mutableStateOf("none")
     private var securityHash by mutableStateOf("")
+    private var securitySalt by mutableStateOf("")
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -70,15 +73,19 @@ class LockScreenActivity : ComponentActivity() {
         lifecycleScope.launch {
             securityType = repository.getLockScreenSecurityType()
             securityHash = repository.getLockScreenSecurityHash()
+            securitySalt = repository.getLockScreenSecuritySalt()
         }
     }
 
     private fun verifyPin(input: String): Boolean {
         if (securityHash.isEmpty()) return true
-        return hashPin(input) == securityHash
+        val sanitized = sanitizeInput(input)
+        if (sanitized.isEmpty()) return false
+        return hashWithSalt(sanitized, securitySalt) == securityHash
     }
 
     private fun attemptUnlock() {
+        LumoLockState.unlock()
         val keyguardManager = getSystemService(KeyguardManager::class.java)
         if (keyguardManager == null || !keyguardManager.isDeviceLocked) {
             LumoLockScreenCompanionService.dismissWakeSurface(this)
@@ -103,14 +110,33 @@ class LockScreenActivity : ComponentActivity() {
     }
 
     companion object {
+        const val MAX_PIN_LENGTH = 10
+        const val MAX_PASSWORD_LENGTH = 32
+        private const val MAX_INPUT_LENGTH = 32
+        private const val SALT_BYTES = 32
+
         fun createIntent(context: Context): Intent =
             Intent(context, LockScreenActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
 
-        fun hashPin(pin: String): String {
+        fun generateSalt(): String {
+            val bytes = ByteArray(SALT_BYTES)
+            SecureRandom().nextBytes(bytes)
+            return bytes.joinToString("") { "%02x".format(it) }
+        }
+
+        fun hashWithSalt(input: String, salt: String): String {
+            val sanitized = sanitizeInput(input)
+            val salted = salt + sanitized
             val digest = MessageDigest.getInstance("SHA-256")
-            val hashBytes = digest.digest(pin.toByteArray())
+            val hashBytes = digest.digest(salted.toByteArray(Charsets.UTF_8))
             return hashBytes.joinToString("") { "%02x".format(it) }
+        }
+
+        fun sanitizeInput(input: String): String {
+            return input
+                .take(MAX_INPUT_LENGTH)
+                .filter { it.code >= 0x20 && it.code != 0x7F }
         }
     }
 }

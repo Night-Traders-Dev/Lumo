@@ -3,6 +3,7 @@ package dev.nighttraders.lumo.launcher
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import dev.nighttraders.lumo.launcher.lockscreen.LumoLockState
 
 /**
  * Listens for screen-off events and launches the Lumo lock screen
@@ -13,6 +14,7 @@ class LumoUnlockReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         when (intent.action) {
             Intent.ACTION_SCREEN_OFF -> {
+                LumoLockState.lock()
                 context.startActivity(LockScreenActivity.createIntent(context))
             }
             Intent.ACTION_USER_PRESENT -> {

@@ -1,15 +1,18 @@
 package dev.nighttraders.lumo.launcher.ui
 
 import android.app.role.RoleManager
+import android.bluetooth.BluetoothManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.location.LocationManager
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.BatteryManager
 import android.os.Build
+import android.provider.Settings as AndroidSettings
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.State
@@ -26,6 +29,9 @@ data class SystemStatusSnapshot(
     val dateLabel: String,
     val networkLabel: String,
     val batteryPercent: Int?,
+    val isBluetoothEnabled: Boolean = false,
+    val isLocationEnabled: Boolean = false,
+    val isAirplaneModeOn: Boolean = false,
 )
 
 @Composable
@@ -43,6 +49,9 @@ fun rememberSystemStatus(): State<SystemStatusSnapshot> {
             addAction(Intent.ACTION_TIME_TICK)
             addAction(Intent.ACTION_TIME_CHANGED)
             addAction(Intent.ACTION_BATTERY_CHANGED)
+            addAction(Intent.ACTION_AIRPLANE_MODE_CHANGED)
+            addAction("android.bluetooth.adapter.action.STATE_CHANGED")
+            addAction("android.location.MODE_CHANGED")
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -113,10 +122,25 @@ private fun readSystemStatus(context: Context): SystemStatusSnapshot {
         }
         ?: "Offline"
 
+    val bluetoothManager = context.getSystemService(BluetoothManager::class.java)
+    val isBluetoothEnabled = bluetoothManager?.adapter?.isEnabled == true
+
+    val locationManager = context.getSystemService(LocationManager::class.java)
+    val isLocationEnabled = locationManager?.isLocationEnabled == true
+
+    val isAirplaneModeOn = AndroidSettings.Global.getInt(
+        context.contentResolver,
+        AndroidSettings.Global.AIRPLANE_MODE_ON,
+        0,
+    ) != 0
+
     return SystemStatusSnapshot(
         timeLabel = timeLabel,
         dateLabel = dateLabel,
         networkLabel = networkLabel,
         batteryPercent = batteryLevel,
+        isBluetoothEnabled = isBluetoothEnabled,
+        isLocationEnabled = isLocationEnabled,
+        isAirplaneModeOn = isAirplaneModeOn,
     )
 }

@@ -46,6 +46,8 @@ class SettingsActivity : ComponentActivity() {
     private val supportsLockScreenCompanion = mutableStateOf(LumoLockScreenCompanionService.isWakeCompanionSupported())
     private val isLockScreenCompanionEnabled = mutableStateOf(false)
     private val lockScreenSecurityType = mutableStateOf("none")
+    private var lockScreenSecurityHash = ""
+    private var lockScreenSecuritySalt = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -79,6 +81,7 @@ class SettingsActivity : ComponentActivity() {
                     onSetLockScreenPin = { pin -> setLockScreenSecurity("pin", pin) },
                     onSetLockScreenPassword = { password -> setLockScreenSecurity("password", password) },
                     onClearLockScreenSecurity = ::clearLockScreenSecurity,
+                    onVerifyCurrentSecurity = ::verifyCurrentSecurity,
                     onOpenWifiSettings = { startActivity(Intent(Settings.ACTION_WIFI_SETTINGS)) },
                     onOpenDisplaySettings = { startActivity(Intent(Settings.ACTION_DISPLAY_SETTINGS)) },
                     onOpenWallpaperSettings = { startActivity(Intent(Intent.ACTION_SET_WALLPAPER)) },
@@ -113,20 +116,37 @@ class SettingsActivity : ComponentActivity() {
             isLockScreenCompanionEnabled.value = effectiveLockScreenEnabled
             LumoGestureSidebarService.sync(this@SettingsActivity, overlayEnabled)
             lockScreenSecurityType.value = repository.getLockScreenSecurityType()
+            lockScreenSecurityHash = repository.getLockScreenSecurityHash()
+            lockScreenSecuritySalt = repository.getLockScreenSecuritySalt()
         }
     }
 
     private fun setLockScreenSecurity(type: String, secret: String) {
+        val sanitized = LockScreenActivity.sanitizeInput(secret)
+        if (sanitized.length < 4) return
         lifecycleScope.launch {
-            repository.setLockScreenSecurity(type, LockScreenActivity.hashPin(secret))
+            val salt = LockScreenActivity.generateSalt()
+            val hash = LockScreenActivity.hashWithSalt(sanitized, salt)
+            repository.setLockScreenSecurity(type, hash, salt)
             lockScreenSecurityType.value = type
+            lockScreenSecurityHash = hash
+            lockScreenSecuritySalt = salt
         }
+    }
+
+    private fun verifyCurrentSecurity(input: String): Boolean {
+        if (lockScreenSecurityHash.isEmpty()) return true
+        val sanitized = LockScreenActivity.sanitizeInput(input)
+        if (sanitized.isEmpty()) return false
+        return LockScreenActivity.hashWithSalt(sanitized, lockScreenSecuritySalt) == lockScreenSecurityHash
     }
 
     private fun clearLockScreenSecurity() {
         lifecycleScope.launch {
             repository.clearLockScreenSecurity()
             lockScreenSecurityType.value = "none"
+            lockScreenSecurityHash = ""
+            lockScreenSecuritySalt = ""
         }
     }
 

@@ -244,7 +244,8 @@ fun LumoLockScreenScreen(
                 pinError = pinError,
                 securityType = securityType,
                 onDigit = { digit ->
-                    if (!pinError && pinInput.length < 16) {
+                    val maxLen = if (securityType == "pin") 10 else 32
+                    if (!pinError && pinInput.length < maxLen) {
                         pinInput += digit
                     }
                 },

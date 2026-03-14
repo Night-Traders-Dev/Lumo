@@ -101,6 +101,7 @@ fun LumoSettingsScreen(
     onSetLockScreenPin: (String) -> Unit,
     onSetLockScreenPassword: (String) -> Unit,
     onClearLockScreenSecurity: () -> Unit,
+    onVerifyCurrentSecurity: (String) -> Boolean = { true },
     onOpenWifiSettings: () -> Unit,
     onOpenDisplaySettings: () -> Unit,
     onOpenWallpaperSettings: () -> Unit,
@@ -295,6 +296,7 @@ fun LumoSettingsScreen(
                 onSetPin = onSetLockScreenPin,
                 onSetPassword = onSetLockScreenPassword,
                 onClearSecurity = onClearLockScreenSecurity,
+                onVerifyCurrentSecurity = onVerifyCurrentSecurity,
             )
         }
 
@@ -401,9 +403,29 @@ private fun LockScreenSecuritySection(
     onSetPin: (String) -> Unit,
     onSetPassword: (String) -> Unit,
     onClearSecurity: () -> Unit,
+    onVerifyCurrentSecurity: (String) -> Boolean,
 ) {
     var showPinDialog by remember { mutableStateOf(false) }
     var showPasswordDialog by remember { mutableStateOf(false) }
+    var showVerifyDialog by remember { mutableStateOf(false) }
+    var pendingAction by remember { mutableStateOf<String?>(null) } // "none", "pin", "password"
+    var verifyError by remember { mutableStateOf(false) }
+
+    val hasExistingSecurity = currentType != "none"
+
+    fun requestSecurityChange(targetType: String) {
+        if (hasExistingSecurity) {
+            pendingAction = targetType
+            showVerifyDialog = true
+            verifyError = false
+        } else {
+            when (targetType) {
+                "none" -> onClearSecurity()
+                "pin" -> showPinDialog = true
+                "password" -> showPasswordDialog = true
+            }
+        }
+    }
 
     val statusText = when (currentType) {
         "pin" -> "Lumo lock screen is secured with a PIN."
@@ -430,7 +452,6 @@ private fun LockScreenSecuritySection(
                 color = Color(0xFFB8AFBA),
             )
 
-            // Security type indicators
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -439,31 +460,59 @@ private fun LockScreenSecuritySection(
                     label = "None",
                     active = currentType == "none",
                     modifier = Modifier.weight(1f),
-                    onClick = onClearSecurity,
+                    onClick = { requestSecurityChange("none") },
                 )
                 SecurityTypeChip(
                     label = "PIN",
                     active = currentType == "pin",
                     modifier = Modifier.weight(1f),
-                    onClick = { showPinDialog = true },
+                    onClick = { requestSecurityChange("pin") },
                 )
                 SecurityTypeChip(
                     label = "Password",
                     active = currentType == "password",
                     modifier = Modifier.weight(1f),
-                    onClick = { showPasswordDialog = true },
+                    onClick = { requestSecurityChange("password") },
                 )
             }
         }
     }
 
+    // Verify current security before allowing changes
+    if (showVerifyDialog) {
+        SecurityVerifyDialog(
+            currentType = currentType,
+            error = verifyError,
+            onVerify = { input ->
+                if (onVerifyCurrentSecurity(input)) {
+                    showVerifyDialog = false
+                    verifyError = false
+                    when (pendingAction) {
+                        "none" -> onClearSecurity()
+                        "pin" -> showPinDialog = true
+                        "password" -> showPasswordDialog = true
+                    }
+                    pendingAction = null
+                } else {
+                    verifyError = true
+                }
+            },
+            onDismiss = {
+                showVerifyDialog = false
+                pendingAction = null
+                verifyError = false
+            },
+        )
+    }
+
     if (showPinDialog) {
         SecurityInputDialog(
             title = "Set PIN",
-            placeholder = "Enter 4+ digit PIN",
+            placeholder = "Enter 4\u201310 digit PIN",
             keyboardType = KeyboardType.NumberPassword,
+            maxLength = 10,
             onConfirm = { pin ->
-                if (pin.length >= 4) {
+                if (pin.length in 4..10) {
                     onSetPin(pin)
                     showPinDialog = false
                 }
@@ -475,10 +524,11 @@ private fun LockScreenSecuritySection(
     if (showPasswordDialog) {
         SecurityInputDialog(
             title = "Set Password",
-            placeholder = "Enter password",
+            placeholder = "Enter 4\u201332 char password",
             keyboardType = KeyboardType.Password,
+            maxLength = 32,
             onConfirm = { password ->
-                if (password.length >= 4) {
+                if (password.length in 4..32) {
                     onSetPassword(password)
                     showPasswordDialog = false
                 }
@@ -486,6 +536,66 @@ private fun LockScreenSecuritySection(
             onDismiss = { showPasswordDialog = false },
         )
     }
+}
+
+@Composable
+private fun SecurityVerifyDialog(
+    currentType: String,
+    error: Boolean,
+    onVerify: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var input by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Color(0xFF1A1420),
+        title = {
+            Text(
+                text = "Enter current ${currentType}",
+                color = Color.White,
+            )
+        },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = input,
+                    onValueChange = { newValue ->
+                        val maxLen = if (currentType == "pin") 10 else 32
+                        input = newValue
+                            .take(maxLen)
+                            .filter { it.code >= 0x20 && it.code != 0x7F }
+                    },
+                    placeholder = { Text("Current ${currentType}") },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = if (currentType == "pin") KeyboardType.NumberPassword else KeyboardType.Password,
+                    ),
+                    isError = error,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                if (error) {
+                    Text(
+                        text = "Incorrect ${currentType}",
+                        color = Color(0xFFED3146),
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onVerify(input) }) {
+                Text("Verify", color = Color(0xFFE95420))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", color = Color(0xFFB8AFBA))
+            }
+        },
+    )
 }
 
 @Composable
@@ -518,6 +628,7 @@ private fun SecurityInputDialog(
     title: String,
     placeholder: String,
     keyboardType: KeyboardType,
+    maxLength: Int = 32,
     onConfirm: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -537,7 +648,12 @@ private fun SecurityInputDialog(
         text = {
             OutlinedTextField(
                 value = if (step == 0) input else confirm,
-                onValueChange = { if (step == 0) input = it else confirm = it },
+                onValueChange = { newValue ->
+                    val sanitized = newValue
+                        .take(maxLength)
+                        .filter { it.code >= 0x20 && it.code != 0x7F }
+                    if (step == 0) input = sanitized else confirm = sanitized
+                },
                 placeholder = {
                     Text(
                         text = if (step == 0) placeholder else "Re-enter to confirm",
