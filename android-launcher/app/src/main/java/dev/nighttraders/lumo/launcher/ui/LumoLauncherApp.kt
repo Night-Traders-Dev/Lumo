@@ -1,9 +1,15 @@
 package dev.nighttraders.lumo.launcher.ui
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -31,15 +37,21 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerDefaults
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AirplanemodeActive
 import androidx.compose.material.icons.rounded.Apps
 import androidx.compose.material.icons.rounded.Battery6Bar
+import androidx.compose.material.icons.rounded.Bluetooth
 import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.FlashlightOn
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.LocationOn
+import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.PushPin
 import androidx.compose.material.icons.rounded.Search
@@ -176,7 +188,13 @@ fun LumoLauncherApp(
             indicatorsExpanded = false
         }
         coroutineScope.launch {
-            pagerState.animateScrollToPage(page.ordinal)
+            pagerState.animateScrollToPage(
+                page = page.ordinal,
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioLowBouncy,
+                    stiffness = Spring.StiffnessLow,
+                ),
+            )
         }
     }
 
@@ -235,6 +253,13 @@ fun LumoLauncherApp(
                     state = pagerState,
                     modifier = Modifier.fillMaxSize(),
                     beyondViewportPageCount = 1,
+                    flingBehavior = PagerDefaults.flingBehavior(
+                        state = pagerState,
+                        snapAnimationSpec = spring(
+                            dampingRatio = Spring.DampingRatioLowBouncy,
+                            stiffness = Spring.StiffnessLow,
+                        ),
+                    ),
                 ) { page ->
                     when (ScopePage.entries[page]) {
                         ScopePage.Home -> HomeScopePage(
@@ -303,8 +328,20 @@ fun LumoLauncherApp(
                     modifier = Modifier
                         .align(Alignment.CenterStart)
                         .padding(start = 2.dp, top = 6.dp, bottom = 8.dp),
-                    enter = slideInHorizontally(initialOffsetX = { -it }) + fadeIn(),
-                    exit = slideOutHorizontally(targetOffsetX = { -it }) + fadeOut(),
+                    enter = slideInHorizontally(
+                        initialOffsetX = { -it },
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioLowBouncy,
+                            stiffness = Spring.StiffnessMediumLow,
+                        ),
+                    ) + fadeIn(animationSpec = tween(200)),
+                    exit = slideOutHorizontally(
+                        targetOffsetX = { -it },
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioNoBouncy,
+                            stiffness = Spring.StiffnessMedium,
+                        ),
+                    ) + fadeOut(animationSpec = tween(150)),
                 ) {
                     UbuntuTouchLauncherRail(
                         currentPage = currentPage,
@@ -322,7 +359,12 @@ fun LumoLauncherApp(
             }
         }
 
-        if (indicatorsExpanded) {
+        // Scrim behind indicators
+        androidx.compose.animation.AnimatedVisibility(
+            visible = indicatorsExpanded,
+            enter = fadeIn(animationSpec = tween(200)),
+            exit = fadeOut(animationSpec = tween(200)),
+        ) {
             val dismissInteraction = remember { MutableInteractionSource() }
             Box(
                 modifier = Modifier
@@ -333,7 +375,26 @@ fun LumoLauncherApp(
                         onClick = { indicatorsExpanded = false },
                     ),
             )
+        }
 
+        // Indicators panel
+        androidx.compose.animation.AnimatedVisibility(
+            visible = indicatorsExpanded,
+            enter = slideInVertically(
+                initialOffsetY = { -it },
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioLowBouncy,
+                    stiffness = Spring.StiffnessMediumLow,
+                ),
+            ) + fadeIn(animationSpec = tween(200)),
+            exit = slideOutVertically(
+                targetOffsetY = { -it },
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioNoBouncy,
+                    stiffness = Spring.StiffnessMedium,
+                ),
+            ) + fadeOut(animationSpec = tween(150)),
+        ) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -619,45 +680,141 @@ private fun IndicatorsSheet(
     Surface(
         modifier = Modifier.fillMaxWidth(),
         color = Color(0xF0141018),
-        shape = RoundedCornerShape(bottomStart = 18.dp, bottomEnd = 18.dp),
+        shape = RoundedCornerShape(bottomStart = 22.dp, bottomEnd = 22.dp),
         shadowElevation = 14.dp,
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 18.dp, vertical = 16.dp),
+                .padding(horizontal = 16.dp, vertical = 16.dp),
         ) {
-            // Status indicators row
+            // "Control Panel" header
+            Text(
+                text = "Control Panel",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                modifier = Modifier.padding(bottom = 14.dp),
+            )
+
+            // Quick toggles grid (3 columns, 2 rows) — Ubuntu Touch style
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                IndicatorPill(
+                QuickToggleTile(
                     icon = Icons.Rounded.Wifi,
                     label = status.networkLabel,
+                    active = status.networkLabel != "Offline",
+                    modifier = Modifier.weight(1f),
+                    onClick = {},
                 )
-                IndicatorPill(
-                    icon = Icons.Rounded.Battery6Bar,
-                    label = status.batteryPercent?.let { "$it%" } ?: "--%",
+                QuickToggleTile(
+                    icon = Icons.Rounded.Bluetooth,
+                    label = "Bluetooth",
+                    active = false,
+                    modifier = Modifier.weight(1f),
+                    onClick = {},
                 )
-                IndicatorPill(
-                    icon = Icons.Rounded.Notifications,
-                    label = if (hasNotificationAccess) {
-                        "${notifications.size}"
-                    } else {
-                        "Off"
-                    },
+                QuickToggleTile(
+                    icon = Icons.Rounded.AirplanemodeActive,
+                    label = "Airplane",
+                    active = false,
+                    modifier = Modifier.weight(1f),
+                    onClick = {},
                 )
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
-            // Date header
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                QuickToggleTile(
+                    icon = Icons.Rounded.FlashlightOn,
+                    label = "Flashlight",
+                    active = false,
+                    modifier = Modifier.weight(1f),
+                    onClick = {},
+                )
+                QuickToggleTile(
+                    icon = Icons.Rounded.LocationOn,
+                    label = "Location",
+                    active = false,
+                    modifier = Modifier.weight(1f),
+                    onClick = {},
+                )
+                QuickToggleTile(
+                    icon = Icons.Rounded.Notifications,
+                    label = if (hasNotificationAccess) "${notifications.size}" else "Off",
+                    active = hasNotificationAccess && notifications.isNotEmpty(),
+                    modifier = Modifier.weight(1f),
+                    onClick = if (hasNotificationAccess) onRefresh else onRequestNotificationAccess,
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Battery + brightness row
+            Surface(
+                color = Color(0x22FFFFFF),
+                shape = RoundedCornerShape(18.dp),
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Battery6Bar,
+                        contentDescription = null,
+                        tint = Color(0xFFE95420),
+                        modifier = Modifier.size(22.dp),
+                    )
+                    // Battery bar
+                    val batteryFraction = (status.batteryPercent ?: 0) / 100f
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(8.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(Color(0x33FFFFFF)),
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxHeight()
+                                .fillMaxWidth(batteryFraction)
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(Color(0xFFE95420)),
+                        )
+                    }
+                    Text(
+                        text = status.batteryPercent?.let { "$it%" } ?: "--%",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = Color.White,
+                    )
+                    Icon(
+                        imageVector = Icons.Rounded.Settings,
+                        contentDescription = null,
+                        tint = Color(0xFFB8AFBA),
+                        modifier = Modifier
+                            .size(22.dp)
+                            .clickable(onClick = onOpenSettings),
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Date
             Text(
                 text = status.dateLabel,
                 style = MaterialTheme.typography.titleMedium,
                 color = Color.White,
-                modifier = Modifier.padding(bottom = 10.dp),
+                modifier = Modifier.padding(bottom = 8.dp),
             )
 
             // Thin separator
@@ -665,10 +822,10 @@ private fun IndicatorsSheet(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(1.dp)
-                    .background(Color(0x33FFFFFF)),
+                    .background(Color(0x22FFFFFF)),
             )
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
             // Notifications section
             if (!hasNotificationAccess) {
@@ -691,7 +848,6 @@ private fun IndicatorsSheet(
                         )
                     }
 
-                    // Dismiss all
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -715,17 +871,7 @@ private fun IndicatorsSheet(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Thin separator
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(1.dp)
-                    .background(Color(0x33FFFFFF)),
-            )
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // Action row
+            // Bottom action row
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly,
@@ -736,7 +882,7 @@ private fun IndicatorsSheet(
                     onClick = onOpenSettings,
                 )
                 IndicatorActionButton(
-                    icon = Icons.Rounded.Home,
+                    icon = Icons.Rounded.Lock,
                     label = "Lock",
                     onClick = onOpenLockScreen,
                 )
@@ -753,29 +899,39 @@ private fun IndicatorsSheet(
 }
 
 @Composable
-private fun IndicatorPill(
+private fun QuickToggleTile(
     icon: ImageVector,
     label: String,
+    active: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
 ) {
+    val bgColor = if (active) Color(0xFFE95420) else Color(0x44FFFFFF)
+    val iconColor = if (active) Color.White else Color(0xFFB8AFBA)
+
     Surface(
-        color = Color(0x22FFFFFF),
-        shape = RoundedCornerShape(14.dp),
+        modifier = modifier.clickable(onClick = onClick),
+        color = bgColor,
+        shape = RoundedCornerShape(16.dp),
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.CenterVertically,
+        Column(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 14.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = null,
-                tint = Color(0xFFDFDBD2),
-                modifier = Modifier.size(18.dp),
+                tint = iconColor,
+                modifier = Modifier.size(26.dp),
             )
             Text(
                 text = label,
-                style = MaterialTheme.typography.labelMedium,
-                color = Color.White,
+                style = MaterialTheme.typography.labelSmall,
+                color = iconColor,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
             )
         }
     }
@@ -1261,6 +1417,7 @@ private fun NotificationActionSheet(
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .background(Color(0x66000000))
             .clickable(
                 interactionSource = dismissInteraction,
                 indication = null,
@@ -1278,7 +1435,7 @@ private fun NotificationActionSheet(
         ) {
             Column(
                 modifier = Modifier.padding(horizontal = 18.dp, vertical = 18.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 Text(
                     text = notification.appLabel,
@@ -1304,23 +1461,28 @@ private fun NotificationActionSheet(
 
                 Spacer(modifier = Modifier.height(4.dp))
 
-                NotificationActionRow(
+                ActionSheetRow(
+                    icon = Icons.Rounded.Notifications,
                     label = "Open notification",
                     onClick = onOpenNotification,
                 )
-                NotificationActionRow(
+                ActionSheetRow(
+                    icon = Icons.Rounded.Apps,
                     label = "Open app",
                     onClick = onOpenApp,
                 )
-                NotificationActionRow(
+                ActionSheetRow(
+                    icon = Icons.Rounded.Info,
                     label = "Snooze 15 minutes",
                     onClick = { onSnooze(15 * 60 * 1000L) },
                 )
-                NotificationActionRow(
+                ActionSheetRow(
+                    icon = Icons.Rounded.Info,
                     label = "Snooze 1 hour",
                     onClick = { onSnooze(60 * 60 * 1000L) },
                 )
-                NotificationActionRow(
+                ActionSheetRow(
+                    icon = Icons.Rounded.Delete,
                     label = "Dismiss notification",
                     destructive = true,
                     onClick = {
@@ -1334,7 +1496,8 @@ private fun NotificationActionSheet(
 }
 
 @Composable
-private fun NotificationActionRow(
+private fun ActionSheetRow(
+    icon: ImageVector,
     label: String,
     destructive: Boolean = false,
     onClick: () -> Unit,
@@ -1343,15 +1506,26 @@ private fun NotificationActionRow(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
-        color = if (destructive) Color(0x44381A1A) else Color(0x22000000),
-        shape = RoundedCornerShape(18.dp),
+        color = if (destructive) Color(0x33381A1A) else Color(0x22FFFFFF),
+        shape = RoundedCornerShape(16.dp),
     ) {
-        Text(
-            text = label,
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp),
-            style = MaterialTheme.typography.bodyLarge,
-            color = if (destructive) MaterialTheme.colorScheme.primary else Color.White,
-        )
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 13.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = if (destructive) Color(0xFFED3146) else Color(0xFFE95420),
+                modifier = Modifier.size(20.dp),
+            )
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyLarge,
+                color = if (destructive) Color(0xFFED3146) else Color.White,
+            )
+        }
     }
 }
 
@@ -1370,7 +1544,7 @@ private fun AppActionSheet(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0x88000000))
+            .background(Color(0x66000000))
             .clickable(
                 interactionSource = dismissInteraction,
                 indication = null,
@@ -1380,27 +1554,29 @@ private fun AppActionSheet(
     ) {
         Surface(
             modifier = Modifier
-                .width(280.dp)
+                .width(300.dp)
                 .clickable(enabled = false, onClick = {}),
             color = Color(0xF218101A),
-            shape = RoundedCornerShape(20.dp),
+            shape = RoundedCornerShape(24.dp),
             shadowElevation = 18.dp,
         ) {
             Column(
-                modifier = Modifier.padding(vertical = 12.dp),
+                modifier = Modifier.padding(vertical = 14.dp, horizontal = 14.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 // App header with icon
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 18.dp, vertical = 10.dp),
+                        .padding(horizontal = 4.dp, vertical = 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    AppIcon(app = app, size = 40.dp)
+                    AppIcon(app = app, size = 44.dp)
                     Text(
                         text = app.label,
                         style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
                         color = Color.White,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
@@ -1412,34 +1588,27 @@ private fun AppActionSheet(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 4.dp)
+                        .padding(vertical = 2.dp)
                         .height(1.dp)
-                        .background(Color(0x33FFFFFF)),
+                        .background(Color(0x22FFFFFF)),
                 )
 
-                // Open
-                AppActionRow(
+                ActionSheetRow(
                     icon = Icons.Rounded.Apps,
                     label = "Open",
                     onClick = onLaunchApp,
                 )
-
-                // Pin / Unpin
-                AppActionRow(
+                ActionSheetRow(
                     icon = Icons.Rounded.PushPin,
                     label = if (isFavorite) "Unpin from Launcher" else "Pin to Launcher",
                     onClick = onToggleFavorite,
                 )
-
-                // App info
-                AppActionRow(
+                ActionSheetRow(
                     icon = Icons.Rounded.Info,
                     label = "App info",
                     onClick = onOpenAppInfo,
                 )
-
-                // Uninstall
-                AppActionRow(
+                ActionSheetRow(
                     icon = Icons.Rounded.Delete,
                     label = "Uninstall",
                     destructive = true,
@@ -1447,35 +1616,6 @@ private fun AppActionSheet(
                 )
             }
         }
-    }
-}
-
-@Composable
-private fun AppActionRow(
-    icon: ImageVector,
-    label: String,
-    destructive: Boolean = false,
-    onClick: () -> Unit,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 18.dp, vertical = 13.dp),
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = if (destructive) Color(0xFFED3146) else Color(0xFFB8AFBA),
-            modifier = Modifier.size(20.dp),
-        )
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodyLarge,
-            color = if (destructive) Color(0xFFED3146) else Color.White,
-        )
     }
 }
 

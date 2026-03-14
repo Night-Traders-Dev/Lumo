@@ -1,8 +1,11 @@
 package dev.nighttraders.lumo.launcher
 
+import android.Manifest
 import android.app.role.RoleManager
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
@@ -14,6 +17,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.getValue
+import androidx.core.content.ContextCompat
 import androidx.core.content.IntentCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -34,10 +38,13 @@ class MainActivity : ComponentActivity() {
     private val viewModel: LauncherViewModel by viewModels { LauncherViewModel.Factory }
     private val repository by lazy { LauncherRepository(applicationContext) }
     private val requestedPageIndex = mutableIntStateOf(START_PAGE_HOME)
+    private val screenReceiver = LumoUnlockReceiver()
     private val requestRoleLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
             refreshDefaultHomeState()
         }
+    private val requestActivityRecognition =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) {}
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -45,6 +52,8 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         configureSystemBars()
         refreshDefaultHomeState()
+        registerScreenReceiver()
+        requestActivityRecognitionIfNeeded()
 
         setContent {
             val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -192,6 +201,33 @@ class MainActivity : ComponentActivity() {
 
     private fun parseRequestedPage(intent: Intent?): Int =
         intent?.getIntExtra(EXTRA_START_PAGE, START_PAGE_HOME) ?: START_PAGE_HOME
+
+    private fun registerScreenReceiver() {
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_SCREEN_OFF)
+            addAction(Intent.ACTION_USER_PRESENT)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(screenReceiver, filter, RECEIVER_NOT_EXPORTED)
+        } else {
+            @Suppress("DEPRECATION")
+            registerReceiver(screenReceiver, filter)
+        }
+    }
+
+    override fun onDestroy() {
+        runCatching { unregisterReceiver(screenReceiver) }
+        super.onDestroy()
+    }
+
+    private fun requestActivityRecognitionIfNeeded() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.ACTIVITY_RECOGNITION)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            requestActivityRecognition.launch(Manifest.permission.ACTIVITY_RECOGNITION)
+        }
+    }
 
     private fun configureSystemBars() {
         WindowCompat.setDecorFitsSystemWindows(window, false)

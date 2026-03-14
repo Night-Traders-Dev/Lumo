@@ -45,6 +45,7 @@ class SettingsActivity : ComponentActivity() {
     private val hasFullScreenIntentPermission = mutableStateOf(false)
     private val supportsLockScreenCompanion = mutableStateOf(LumoLockScreenCompanionService.isWakeCompanionSupported())
     private val isLockScreenCompanionEnabled = mutableStateOf(false)
+    private val lockScreenSecurityType = mutableStateOf("none")
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -63,6 +64,7 @@ class SettingsActivity : ComponentActivity() {
                     hasFullScreenIntentPermission = hasFullScreenIntentPermission.value,
                     supportsLockScreenCompanion = supportsLockScreenCompanion.value,
                     isLockScreenCompanionEnabled = isLockScreenCompanionEnabled.value,
+                    lockScreenSecurityType = lockScreenSecurityType.value,
                     onRequestDefaultHome = ::requestDefaultHomeRole,
                     onRequestNotificationAccess = ::requestNotificationAccess,
                     onRequestOverlayPermission = ::openOverlayPermissionSettings,
@@ -74,6 +76,9 @@ class SettingsActivity : ComponentActivity() {
                     onOpenLockScreenPermissionSettings = ::openLockScreenPermissionSettings,
                     onEnableLockScreenCompanion = ::enableLockScreenCompanion,
                     onDisableLockScreenCompanion = ::disableLockScreenCompanion,
+                    onSetLockScreenPin = { pin -> setLockScreenSecurity("pin", pin) },
+                    onSetLockScreenPassword = { password -> setLockScreenSecurity("password", password) },
+                    onClearLockScreenSecurity = ::clearLockScreenSecurity,
                     onOpenWifiSettings = { startActivity(Intent(Settings.ACTION_WIFI_SETTINGS)) },
                     onOpenDisplaySettings = { startActivity(Intent(Settings.ACTION_DISPLAY_SETTINGS)) },
                     onOpenWallpaperSettings = { startActivity(Intent(Intent.ACTION_SET_WALLPAPER)) },
@@ -107,6 +112,21 @@ class SettingsActivity : ComponentActivity() {
             }
             isLockScreenCompanionEnabled.value = effectiveLockScreenEnabled
             LumoGestureSidebarService.sync(this@SettingsActivity, overlayEnabled)
+            lockScreenSecurityType.value = repository.getLockScreenSecurityType()
+        }
+    }
+
+    private fun setLockScreenSecurity(type: String, secret: String) {
+        lifecycleScope.launch {
+            repository.setLockScreenSecurity(type, LockScreenActivity.hashPin(secret))
+            lockScreenSecurityType.value = type
+        }
+    }
+
+    private fun clearLockScreenSecurity() {
+        lifecycleScope.launch {
+            repository.clearLockScreenSecurity()
+            lockScreenSecurityType.value = "none"
         }
     }
 

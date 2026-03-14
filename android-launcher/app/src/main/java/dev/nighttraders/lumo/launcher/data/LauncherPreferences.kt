@@ -9,4 +9,6 @@ internal object LauncherPreferences {
     val recentAppKeys = stringPreferencesKey("recent_app_keys")
     val overlaySidebarEnabled = booleanPreferencesKey("overlay_sidebar_enabled")
     val lockScreenCompanionEnabled = booleanPreferencesKey("lock_screen_companion_enabled")
+    val lockScreenSecurityType = stringPreferencesKey("lock_screen_security_type") // "none", "pin", "password"
+    val lockScreenSecurityHash = stringPreferencesKey("lock_screen_security_hash")
 }

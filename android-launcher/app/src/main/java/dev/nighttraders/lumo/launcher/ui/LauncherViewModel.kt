@@ -1,6 +1,7 @@
 package dev.nighttraders.lumo.launcher.ui
 
 import android.app.Application
+import android.content.Intent
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -102,9 +103,19 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         }
         // Fallback: launch the app's main activity and dismiss the notification
         val launchResult = repository.launchPackage(notification.packageName)
-        if (launchResult.isSuccess) {
-            LumoNotificationListenerService.dismissNotification(notification.key)
+        if (launchResult.isFailure) {
+            // Last resort: try a simple launch intent via PackageManager
+            val ctx = getApplication<android.app.Application>()
+            val launchIntent = ctx.packageManager.getLaunchIntentForPackage(notification.packageName)
+            if (launchIntent != null) {
+                launchIntent.addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED,
+                )
+                return runCatching { ctx.startActivity(launchIntent) }
+            }
+            return launchResult
         }
+        LumoNotificationListenerService.dismissNotification(notification.key)
         return launchResult
     }
 

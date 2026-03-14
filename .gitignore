@@ -1,0 +1,32 @@
+# Artifacts
+.artifacts/
+
+# Android / Gradle
+*.iml
+.gradle/
+.kotlin/
+build/
+local.properties
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# Android Studio / IntelliJ
+.idea/
+*.hprof
+captures/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.venv/
+venv/
+
+# OS
+.DS_Store
+Thumbs.db
+*.swp
+*~

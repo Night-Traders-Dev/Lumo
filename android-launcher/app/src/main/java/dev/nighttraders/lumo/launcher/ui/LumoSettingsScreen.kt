@@ -3,8 +3,10 @@ package dev.nighttraders.lumo.launcher.ui
 import android.content.Context
 import android.view.inputmethod.InputMethodInfo
 import android.view.inputmethod.InputMethodManager
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -13,10 +15,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Keyboard
@@ -26,20 +31,28 @@ import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Wifi
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.State
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 
 data class LumoKeyboardStatus(
@@ -73,6 +86,7 @@ fun LumoSettingsScreen(
     hasFullScreenIntentPermission: Boolean,
     supportsLockScreenCompanion: Boolean,
     isLockScreenCompanionEnabled: Boolean,
+    lockScreenSecurityType: String,
     onRequestDefaultHome: () -> Unit,
     onRequestNotificationAccess: () -> Unit,
     onRequestOverlayPermission: () -> Unit,
@@ -84,6 +98,9 @@ fun LumoSettingsScreen(
     onOpenLockScreenPermissionSettings: () -> Unit,
     onEnableLockScreenCompanion: () -> Unit,
     onDisableLockScreenCompanion: () -> Unit,
+    onSetLockScreenPin: (String) -> Unit,
+    onSetLockScreenPassword: (String) -> Unit,
+    onClearLockScreenSecurity: () -> Unit,
     onOpenWifiSettings: () -> Unit,
     onOpenDisplaySettings: () -> Unit,
     onOpenWallpaperSettings: () -> Unit,
@@ -273,6 +290,15 @@ fun LumoSettingsScreen(
         }
 
         item {
+            LockScreenSecuritySection(
+                currentType = lockScreenSecurityType,
+                onSetPin = onSetLockScreenPin,
+                onSetPassword = onSetLockScreenPassword,
+                onClearSecurity = onClearLockScreenSecurity,
+            )
+        }
+
+        item {
             SettingSection(
                 title = "System Shortcuts",
                 subtitle = "Quick links for common phone settings.",
@@ -367,6 +393,182 @@ private fun SettingActionRow(
             )
         }
     }
+}
+
+@Composable
+private fun LockScreenSecuritySection(
+    currentType: String,
+    onSetPin: (String) -> Unit,
+    onSetPassword: (String) -> Unit,
+    onClearSecurity: () -> Unit,
+) {
+    var showPinDialog by remember { mutableStateOf(false) }
+    var showPasswordDialog by remember { mutableStateOf(false) }
+
+    val statusText = when (currentType) {
+        "pin" -> "Lumo lock screen is secured with a PIN."
+        "password" -> "Lumo lock screen is secured with a password."
+        else -> "No security is set. Anyone can swipe to unlock."
+    }
+
+    Surface(
+        color = Color(0x55120B14),
+        shape = RoundedCornerShape(28.dp),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 18.dp, vertical = 18.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                text = "Lock Screen Security",
+                style = MaterialTheme.typography.titleLarge,
+                color = Color.White,
+            )
+            Text(
+                text = statusText,
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color(0xFFB8AFBA),
+            )
+
+            // Security type indicators
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                SecurityTypeChip(
+                    label = "None",
+                    active = currentType == "none",
+                    modifier = Modifier.weight(1f),
+                    onClick = onClearSecurity,
+                )
+                SecurityTypeChip(
+                    label = "PIN",
+                    active = currentType == "pin",
+                    modifier = Modifier.weight(1f),
+                    onClick = { showPinDialog = true },
+                )
+                SecurityTypeChip(
+                    label = "Password",
+                    active = currentType == "password",
+                    modifier = Modifier.weight(1f),
+                    onClick = { showPasswordDialog = true },
+                )
+            }
+        }
+    }
+
+    if (showPinDialog) {
+        SecurityInputDialog(
+            title = "Set PIN",
+            placeholder = "Enter 4+ digit PIN",
+            keyboardType = KeyboardType.NumberPassword,
+            onConfirm = { pin ->
+                if (pin.length >= 4) {
+                    onSetPin(pin)
+                    showPinDialog = false
+                }
+            },
+            onDismiss = { showPinDialog = false },
+        )
+    }
+
+    if (showPasswordDialog) {
+        SecurityInputDialog(
+            title = "Set Password",
+            placeholder = "Enter password",
+            keyboardType = KeyboardType.Password,
+            onConfirm = { password ->
+                if (password.length >= 4) {
+                    onSetPassword(password)
+                    showPasswordDialog = false
+                }
+            },
+            onDismiss = { showPasswordDialog = false },
+        )
+    }
+}
+
+@Composable
+private fun SecurityTypeChip(
+    label: String,
+    active: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    Surface(
+        modifier = modifier.clickable(onClick = onClick),
+        color = if (active) Color(0xFFE95420) else Color(0x33000000),
+        shape = RoundedCornerShape(16.dp),
+    ) {
+        Box(
+            modifier = Modifier.padding(vertical = 12.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelLarge,
+                color = Color.White,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SecurityInputDialog(
+    title: String,
+    placeholder: String,
+    keyboardType: KeyboardType,
+    onConfirm: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var input by remember { mutableStateOf("") }
+    var confirm by remember { mutableStateOf("") }
+    var step by remember { mutableStateOf(0) } // 0 = enter, 1 = confirm
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Color(0xFF1A1420),
+        title = {
+            Text(
+                text = if (step == 0) title else "Confirm $title",
+                color = Color.White,
+            )
+        },
+        text = {
+            OutlinedTextField(
+                value = if (step == 0) input else confirm,
+                onValueChange = { if (step == 0) input = it else confirm = it },
+                placeholder = {
+                    Text(
+                        text = if (step == 0) placeholder else "Re-enter to confirm",
+                    )
+                },
+                singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
+                modifier = Modifier.fillMaxWidth(),
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                if (step == 0 && input.length >= 4) {
+                    step = 1
+                } else if (step == 1 && confirm == input) {
+                    onConfirm(input)
+                }
+            }) {
+                Text(
+                    text = if (step == 0) "Next" else "Set",
+                    color = Color(0xFFE95420),
+                )
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", color = Color(0xFFB8AFBA))
+            }
+        },
+    )
 }
 
 fun Context.readLumoKeyboardStatus(): LumoKeyboardStatus {

@@ -30,6 +30,8 @@ import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.PopupWindow
 import android.widget.TextView
+import android.os.Handler
+import android.os.Looper
 import androidx.core.content.getSystemService
 import java.util.Locale
 import kotlin.math.abs
@@ -66,6 +68,17 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
     private var spaceCursorAccumulator = 0f
 
     private val wordEngine by lazy { KeyboardWordEngine.get(applicationContext) }
+
+    private val repeatHandler = Handler(Looper.getMainLooper())
+    private var backspaceRepeating = false
+    private val backspaceRepeatRunnable = object : Runnable {
+        override fun run() {
+            backspace()
+            repeatHandler.postDelayed(this, BACKSPACE_REPEAT_INTERVAL_MS)
+        }
+    }
+
+    private var longPressPopup: PopupWindow? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -267,7 +280,7 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
                         toggleShift()
                     })
                     addAll(listOf("z", "x", "c", "v", "b", "n", "m").map(::letterKey))
-                    add(actionKey("Bksp", weight = 1.4f) { backspace() })
+                    add(backspaceKey())
                 },
                 listOf(
                     actionKey("?123", weight = 1.3f, highlighted = symbolMode) { openPrimarySymbols() },
@@ -283,7 +296,7 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
                 listOf("@", "#", "$", "%", "&", "-", "+", "(", ")").map(::textKey),
                 buildList {
                     addAll(listOf("=", "/", ";", ":", "\"", "'", "!", "?").map(::textKey))
-                    add(actionKey("Bksp", weight = 1.4f) { backspace() })
+                    add(backspaceKey())
                 },
                 listOf(
                     actionKey("ABC", weight = 1.2f) { closeSymbols() },
@@ -299,7 +312,7 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
                 listOf("_", "\\", "|", "~", "`", "€", "£", "¥", "•").map(::textKey),
                 buildList {
                     addAll(listOf("!", "?", "\"", "'", ":", ";", "(", ")").map(::textKey))
-                    add(actionKey("Bksp", weight = 1.4f) { backspace() })
+                    add(backspaceKey())
                 },
                 listOf(
                     actionKey("ABC", weight = 1.2f) { closeSymbols() },
@@ -381,6 +394,8 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
                 setOnTouchListener(LetterSwipeTouchListener(spec))
             } else if (spec.isSpaceKey) {
                 setOnTouchListener(SpaceCursorTouchListener())
+            } else if (spec.isBackspaceKey) {
+                setOnTouchListener(BackspaceTouchListener())
             } else {
                 setOnClickListener { handleKey(spec) }
             }
@@ -611,6 +626,7 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
     private fun applySuggestion(suggestion: SuggestionCandidate) {
         suggestion.completion?.let { completion ->
             currentInputConnection?.commitCompletion(completion)
+            commitText(" ") // Auto-space after suggestion
             clearSuggestions()
             updateAutoCapitalization()
             return
@@ -621,6 +637,7 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
             currentInputConnection?.deleteSurroundingText(activeWord.length, 0)
         }
         currentInputConnection?.commitText(applyCaseToSuggestion(suggestion.text, activeWord), 1)
+        commitText(" ") // Auto-space after suggestion
         clearSuggestions()
         updateSuggestions()
     }
@@ -778,6 +795,7 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
             currentInputConnection?.deleteSurroundingText(activeWord.length, 0)
         }
         commitText(resolvedWord)
+        commitText(" ") // Auto-space after gesture word
 
         if (shifted) {
             shifted = false
@@ -915,16 +933,89 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
         }
     }
 
+    private fun showLongPressPopup(anchorView: View, chars: List<String>) {
+        dismissLongPressPopup()
+        val strip = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(dp(4), dp(4), dp(4), dp(4))
+            background = GradientDrawable().apply {
+                cornerRadius = dp(10).toFloat()
+                setColor(Color.parseColor("#555555"))
+            }
+        }
+        chars.forEach { ch ->
+            strip.addView(
+                Button(this).apply {
+                    text = ch
+                    isAllCaps = false
+                    setTextColor(Color.WHITE)
+                    textSize = 18f
+                    typeface = Typeface.DEFAULT
+                    gravity = Gravity.CENTER
+                    minWidth = dp(40)
+                    minHeight = dp(44)
+                    minimumWidth = dp(40)
+                    minimumHeight = dp(44)
+                    stateListAnimator = null
+                    elevation = 0f
+                    val bg = GradientDrawable().apply {
+                        cornerRadius = dp(6).toFloat()
+                        setColor(Color.parseColor("#3C3C3C"))
+                    }
+                    background = bg
+                    backgroundTintList = null
+                    setPadding(dp(4), dp(4), dp(4), dp(4))
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                    ).apply {
+                        marginStart = dp(2)
+                        marginEnd = dp(2)
+                    }
+                    setOnClickListener {
+                        performKeyHaptic()
+                        commitWordCharacter(ch)
+                        dismissLongPressPopup()
+                    }
+                },
+            )
+        }
+        strip.measure(
+            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
+            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
+        )
+        val popup = PopupWindow(strip, strip.measuredWidth, strip.measuredHeight, true).apply {
+            isClippingEnabled = true
+            isFocusable = true
+            setOnDismissListener { longPressPopup = null }
+        }
+        val location = IntArray(2)
+        anchorView.getLocationInWindow(location)
+        val xOffset = location[0] + (anchorView.width - strip.measuredWidth) / 2
+        val yOffset = location[1] - strip.measuredHeight - dp(6)
+        popup.showAtLocation(anchorView, Gravity.NO_GRAVITY, xOffset, yOffset)
+        longPressPopup = popup
+    }
+
+    private fun dismissLongPressPopup() {
+        longPressPopup?.dismiss()
+        longPressPopup = null
+    }
+
     private inner class LetterSwipeTouchListener(
         private val spec: KeySpec,
     ) : View.OnTouchListener {
         private var lastMoveX = 0f
         private var lastMoveY = 0f
+        private var longPressTriggered = false
+        private var longPressRunnable: Runnable? = null
 
         override fun onTouch(view: View, event: MotionEvent): Boolean =
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     swipeInProgress = false
+                    longPressTriggered = false
                     swipeTrail.clear()
                     swipeStartX = event.rawX
                     swipeStartY = event.rawY
@@ -934,43 +1025,72 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
                     showKeyPreview(view, spec.value)
                     val local = localCoordinates(event.rawX, event.rawY)
                     rootView.beginTrail(local[0], local[1])
+
+                    // Schedule long-press for special characters
+                    val lowerKey = spec.value.lowercase(Locale.getDefault())
+                    LONG_PRESS_CHARS[lowerKey]?.let { chars ->
+                        val runnable = Runnable {
+                            longPressTriggered = true
+                            dismissKeyPreview()
+                            performKeyHaptic()
+                            val displayChars = if (isShiftActive()) {
+                                chars.map { ch -> ch.uppercase(Locale.getDefault()) }
+                            } else {
+                                chars
+                            }
+                            showLongPressPopup(view, displayChars)
+                        }
+                        longPressRunnable = runnable
+                        repeatHandler.postDelayed(runnable, LONG_PRESS_DELAY_MS)
+                    }
                     true
                 }
 
                 MotionEvent.ACTION_MOVE -> {
-                    val local = localCoordinates(event.rawX, event.rawY)
-                    if (swipeInProgress) {
-                        rootView.extendTrail(local[0], local[1])
-                    }
-
-                    interpolateKeys(lastMoveX, lastMoveY, event.rawX, event.rawY)
-                    lastMoveX = event.rawX
-                    lastMoveY = event.rawY
-
-                    findLetterKeyTarget(event.rawX, event.rawY)?.let { target ->
-                        addSwipeValue(target.value)
+                    if (longPressTriggered) {
+                        true
+                    } else {
+                        val local = localCoordinates(event.rawX, event.rawY)
                         if (swipeInProgress) {
-                            showKeyPreview(target.button, target.displayValue)
+                            rootView.extendTrail(local[0], local[1])
                         }
-                    }
 
-                    if (!swipeInProgress &&
-                        (abs(event.rawX - swipeStartX) > dp(10) ||
-                            abs(event.rawY - swipeStartY) > dp(10) ||
-                            swipeTrail.size > 1)
-                    ) {
-                        swipeInProgress = true
-                        val startLocal = localCoordinates(swipeStartX, swipeStartY)
-                        rootView.beginTrail(startLocal[0], startLocal[1])
-                        rootView.extendTrail(local[0], local[1])
+                        interpolateKeys(lastMoveX, lastMoveY, event.rawX, event.rawY)
+                        lastMoveX = event.rawX
+                        lastMoveY = event.rawY
+
+                        findLetterKeyTarget(event.rawX, event.rawY)?.let { target ->
+                            addSwipeValue(target.value)
+                            if (swipeInProgress) {
+                                showKeyPreview(target.button, target.displayValue)
+                            }
+                        }
+
+                        if (!swipeInProgress &&
+                            (abs(event.rawX - swipeStartX) > dp(10) ||
+                                abs(event.rawY - swipeStartY) > dp(10) ||
+                                swipeTrail.size > 1)
+                        ) {
+                            swipeInProgress = true
+                            // Cancel long-press if swiping
+                            longPressRunnable?.let { repeatHandler.removeCallbacks(it) }
+                            longPressRunnable = null
+                            val startLocal = localCoordinates(swipeStartX, swipeStartY)
+                            rootView.beginTrail(startLocal[0], startLocal[1])
+                            rootView.extendTrail(local[0], local[1])
+                        }
+                        true
                     }
-                    true
                 }
 
                 MotionEvent.ACTION_UP -> {
+                    longPressRunnable?.let { repeatHandler.removeCallbacks(it) }
+                    longPressRunnable = null
                     dismissKeyPreview()
                     rootView.clearTrail()
-                    if (swipeInProgress && swipeTrail.size > 1) {
+                    if (longPressTriggered) {
+                        // Long-press popup is showing — don't type anything
+                    } else if (swipeInProgress && swipeTrail.size > 1) {
                         commitSwipeTrail()
                     } else {
                         handleKey(spec)
@@ -982,7 +1102,10 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
                 }
 
                 MotionEvent.ACTION_CANCEL -> {
+                    longPressRunnable?.let { repeatHandler.removeCallbacks(it) }
+                    longPressRunnable = null
                     dismissKeyPreview()
+                    dismissLongPressPopup()
                     rootView.clearTrail()
                     swipeTrail.clear()
                     swipePreviewSuggestions = emptyList()
@@ -1001,6 +1124,7 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
         val weight: Float,
         val highlighted: Boolean = false,
         val isSpaceKey: Boolean = false,
+        val isBackspaceKey: Boolean = false,
         val action: (() -> Unit)? = null,
     ) {
         val isLetterKey: Boolean
@@ -1019,7 +1143,30 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
     )
 
     private companion object {
-        val AUTO_CAP_TRAILING_CHARACTERS = setOf('"', '\'', ')', ']', '}', '»', '”')
+        val AUTO_CAP_TRAILING_CHARACTERS = setOf('”', '\'', ')', ']', '}', '»', '”')
+        const val BACKSPACE_REPEAT_DELAY_MS = 400L
+        const val BACKSPACE_REPEAT_INTERVAL_MS = 50L
+        const val LONG_PRESS_DELAY_MS = 350L
+
+        // Long-press alternate characters (Gboard-style)
+        val LONG_PRESS_CHARS: Map<String, List<String>> = mapOf(
+            "a" to listOf("\u00e0", "\u00e1", "\u00e2", "\u00e4", "\u00e3", "\u00e5", "\u00e6", "\u0101"),
+            "c" to listOf("\u00e7", "\u0107", "\u010d"),
+            "d" to listOf("\u00f0"),
+            "e" to listOf("\u00e8", "\u00e9", "\u00ea", "\u00eb", "\u0113", "\u0119", "\u0117"),
+            "i" to listOf("\u00ec", "\u00ed", "\u00ee", "\u00ef", "\u012b", "\u012f"),
+            "l" to listOf("\u0142"),
+            "n" to listOf("\u00f1", "\u0144"),
+            "o" to listOf("\u00f2", "\u00f3", "\u00f4", "\u00f6", "\u00f5", "\u00f8", "\u0153", "\u014d"),
+            "r" to listOf("\u0159"),
+            "s" to listOf("\u00df", "\u015b", "\u0161"),
+            "u" to listOf("\u00f9", "\u00fa", "\u00fb", "\u00fc", "\u016b"),
+            "y" to listOf("\u00fd", "\u00ff"),
+            "z" to listOf("\u017e", "\u017a", "\u017c"),
+            "t" to listOf("\u00fe"),
+            "w" to listOf("\u0175"),
+            "g" to listOf("\u011f"),
+        )
     }
 
     private fun textKey(value: String): KeySpec =
@@ -1051,10 +1198,41 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
             isSpaceKey = true,
         )
 
+    private fun backspaceKey(): KeySpec =
+        KeySpec(
+            value = "Bksp",
+            isSpecial = true,
+            weight = 1.4f,
+            isBackspaceKey = true,
+        )
+
     private fun moveCursor(direction: Int) {
         val keyCode = if (direction < 0) KeyEvent.KEYCODE_DPAD_LEFT else KeyEvent.KEYCODE_DPAD_RIGHT
         currentInputConnection?.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, keyCode))
         currentInputConnection?.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, keyCode))
+    }
+
+    private inner class BackspaceTouchListener : View.OnTouchListener {
+        override fun onTouch(view: View, event: MotionEvent): Boolean =
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    backspace()
+                    backspaceRepeating = false
+                    repeatHandler.postDelayed({
+                        backspaceRepeating = true
+                        backspaceRepeatRunnable.run()
+                    }, BACKSPACE_REPEAT_DELAY_MS)
+                    true
+                }
+
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    repeatHandler.removeCallbacksAndMessages(null)
+                    backspaceRepeating = false
+                    true
+                }
+
+                else -> false
+            }
     }
 
     private inner class SpaceCursorTouchListener : View.OnTouchListener {

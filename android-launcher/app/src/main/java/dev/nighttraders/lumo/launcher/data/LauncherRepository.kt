@@ -132,6 +132,26 @@ class LauncherRepository(private val context: Context) {
         }
     }
 
+    suspend fun getLockScreenSecurityType(): String =
+        context.launcherPreferences.data.first()[LauncherPreferences.lockScreenSecurityType] ?: "none"
+
+    suspend fun getLockScreenSecurityHash(): String =
+        context.launcherPreferences.data.first()[LauncherPreferences.lockScreenSecurityHash].orEmpty()
+
+    suspend fun setLockScreenSecurity(type: String, hash: String) {
+        context.launcherPreferences.edit { preferences ->
+            preferences[LauncherPreferences.lockScreenSecurityType] = type
+            preferences[LauncherPreferences.lockScreenSecurityHash] = hash
+        }
+    }
+
+    suspend fun clearLockScreenSecurity() {
+        context.launcherPreferences.edit { preferences ->
+            preferences[LauncherPreferences.lockScreenSecurityType] = "none"
+            preferences.remove(LauncherPreferences.lockScreenSecurityHash)
+        }
+    }
+
     fun openAppInfo(app: LaunchableApp): Result<Unit> = runCatching {
         val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
             .setData(Uri.parse("package:${app.packageName}"))

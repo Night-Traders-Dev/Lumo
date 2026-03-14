@@ -92,11 +92,28 @@ class LumoNotificationListenerService : NotificationListenerService() {
 
             // Prefer contentIntent (deep links to specific content like SMS conversation)
             // Fall back to fullScreenIntent (used by calls, alarms)
-            val intent = sbn.notification.contentIntent ?: sbn.notification.fullScreenIntent
-                ?: return Result.success(false)
+            val pendingIntent = sbn.notification.contentIntent ?: sbn.notification.fullScreenIntent
 
+            if (pendingIntent != null) {
+                return runCatching {
+                    pendingIntent.send()
+                    listener.cancelNotification(sbn.key)
+                    LauncherNotificationCenter.remove(key)
+                    LauncherNotificationCenter.dismissHeadsUp(key)
+                    true
+                }
+            }
+
+            // No PendingIntent — try launching the package's main activity
             return runCatching {
-                intent.send()
+                val launchIntent = listener.packageManager
+                    .getLaunchIntentForPackage(sbn.packageName)
+                    ?: throw IllegalStateException("No launch intent for ${sbn.packageName}")
+                launchIntent.addFlags(
+                    android.content.Intent.FLAG_ACTIVITY_NEW_TASK or
+                        android.content.Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED,
+                )
+                listener.startActivity(launchIntent)
                 listener.cancelNotification(sbn.key)
                 LauncherNotificationCenter.remove(key)
                 LauncherNotificationCenter.dismissHeadsUp(key)
