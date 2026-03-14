@@ -24,8 +24,14 @@ data class LauncherUiState(
     val favorites: List<LaunchableApp>
         get() {
             val appsByKey = apps.associateBy { it.componentKey }
+            // Start with ordered favorites
             val ordered = orderedFavoriteKeys.mapNotNull { appsByKey[it] }
-            return ordered.ifEmpty {
+            // Also include any favorites that are in the set but not in the order list
+            val orderedKeys = ordered.map { it.componentKey }.toSet()
+            val unordered = apps.filter { app ->
+                favoriteKeys.contains(app.componentKey) && !orderedKeys.contains(app.componentKey)
+            }
+            return (ordered + unordered).ifEmpty {
                 apps.filter { app -> favoriteKeys.contains(app.componentKey) }
             }
         }

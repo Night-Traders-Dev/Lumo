@@ -107,6 +107,16 @@
             </intent-filter>
         </activity>
 
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.mms_provider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/mms_file_paths" />
+        </provider>
+
         <receiver
             android:name=".messaging.SmsReceiver"
             android:exported="true"

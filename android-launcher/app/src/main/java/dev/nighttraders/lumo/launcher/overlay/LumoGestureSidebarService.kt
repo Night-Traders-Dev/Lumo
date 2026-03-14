@@ -114,25 +114,46 @@ class LumoGestureSidebarService : Service() {
 
     private inner class EdgeRevealTouchListener : View.OnTouchListener {
         private var startX = 0f
+        private var startY = 0f
+        private var triggered = false
 
         override fun onTouch(v: View, event: MotionEvent): Boolean =
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     startX = event.rawX
+                    startY = event.rawY
+                    triggered = false
+                    // Request that the parent not intercept touch events
+                    v.parent?.requestDisallowInterceptTouchEvent(true)
                     true
                 }
 
                 MotionEvent.ACTION_MOVE -> {
-                    if (event.rawX - startX > dp(26)) {
-                        openDashRail()
-                        startX = event.rawX
+                    if (!triggered) {
+                        val dx = event.rawX - startX
+                        val dy = kotlin.math.abs(event.rawY - startY)
+                        // Trigger if horizontal swipe > 26dp and mostly horizontal
+                        if (dx > dp(26) && dx > dy) {
+                            triggered = true
+                            openDashRail()
+                        }
                     }
                     true
                 }
 
-                MotionEvent.ACTION_UP,
-                MotionEvent.ACTION_CANCEL,
-                -> true
+                MotionEvent.ACTION_UP -> {
+                    // Also support tap to open (fallback for when swipe doesn't work)
+                    if (!triggered && kotlin.math.abs(event.rawX - startX) < dp(8)) {
+                        openDashRail()
+                    }
+                    triggered = false
+                    true
+                }
+
+                MotionEvent.ACTION_CANCEL -> {
+                    triggered = false
+                    true
+                }
 
                 else -> false
             }

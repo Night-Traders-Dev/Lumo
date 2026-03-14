@@ -157,18 +157,26 @@ fun TerminalScreen(
             BasicTextField(
                 value = hiddenInput,
                 onValueChange = { newValue ->
-                    val oldText = hiddenInput.text
-                    val newText = newValue.text
-                    if (newText.length > oldText.length) {
-                        // Characters were added
-                        val added = newText.substring(oldText.length)
-                        onInput(added)
-                    } else if (newText.length < oldText.length) {
-                        // Backspace — send delete character
+                    val oldLen = hiddenInput.text.length
+                    val newLen = newValue.text.length
+                    if (newLen > oldLen) {
+                        val added = newValue.text.substring(oldLen)
+                        // Check for newlines (Enter key)
+                        for (c in added) {
+                            if (c == '\n') {
+                                onInput("\n")
+                            } else {
+                                onInput(c.toString())
+                            }
+                        }
+                    } else if (newLen < oldLen) {
                         onInput("\u007F")
                     }
-                    // Reset to avoid accumulating text
-                    hiddenInput = TextFieldValue("")
+                    hiddenInput = newValue
+                    // Periodically reset to prevent unbounded growth
+                    if (hiddenInput.text.length > 200) {
+                        hiddenInput = TextFieldValue("")
+                    }
                 },
                 modifier = Modifier
                     .focusRequester(focusRequester)

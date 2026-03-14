@@ -3,6 +3,7 @@ package dev.nighttraders.lumo.launcher.messaging
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -27,6 +28,7 @@ class MessagingActivity : ComponentActivity() {
     private var currentThread by mutableStateOf<SmsConversation?>(null)
     private var hasPermission by mutableStateOf(false)
     private var showNewMessage by mutableStateOf(false)
+    private var pendingImageUri by mutableStateOf<Uri?>(null)
 
     private val requestSmsPermission =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
@@ -35,6 +37,17 @@ class MessagingActivity : ComponentActivity() {
                 loadConversations()
             } else {
                 Toast.makeText(this, "SMS permission required", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+    private val pickImage =
+        registerForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+            if (uri != null) {
+                // Take persistent read permission so we can access it later
+                runCatching {
+                    contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                pendingImageUri = uri
             }
         }
 
@@ -70,6 +83,7 @@ class MessagingActivity : ComponentActivity() {
                         currentThread = currentThread,
                         onSelectConversation = { conversation ->
                             showNewMessage = false
+                            pendingImageUri = null
                             currentThread = conversation
                             loadMessages(conversation.threadId)
                         },
@@ -77,6 +91,7 @@ class MessagingActivity : ComponentActivity() {
                             if (currentThread != null) {
                                 currentThread = null
                                 messages = emptyList()
+                                pendingImageUri = null
                                 loadConversations()
                             } else {
                                 finish()
@@ -104,18 +119,18 @@ class MessagingActivity : ComponentActivity() {
                                 val result = smsRepository.sendSms(address, body)
                                 if (result.isSuccess) {
                                     showNewMessage = false
+                                    pendingImageUri = null
                                     kotlinx.coroutines.delay(500)
                                     loadConversations()
                                 } else {
-                                    Toast.makeText(
-                                        this@MessagingActivity,
-                                        "Failed to send message",
-                                        Toast.LENGTH_SHORT,
-                                    ).show()
+                                    Toast.makeText(this@MessagingActivity, "Failed to send message", Toast.LENGTH_SHORT).show()
                                 }
                             }
                         },
-                        onCancelNewMessage = { showNewMessage = false },
+                        onCancelNewMessage = {
+                            showNewMessage = false
+                            pendingImageUri = null
+                        },
                         onShareMessage = { msg ->
                             val shareIntent = Intent(Intent.ACTION_SEND).apply {
                                 type = "text/plain"
@@ -125,12 +140,43 @@ class MessagingActivity : ComponentActivity() {
                         },
                         onDeleteMessage = { msg ->
                             lifecycleScope.launch {
-                                smsRepository.deleteMessage(msg.id)
+                                smsRepository.deleteMessage(msg.id, msg.isMms)
                                 currentThread?.let { loadMessages(it.threadId) }
                             }
                         },
                         onSearchContacts = { query ->
                             smsRepository.searchContacts(query)
+                        },
+                        onAttachImage = {
+                            pickImage.launch("image/*")
+                        },
+                        pendingImageUri = pendingImageUri,
+                        onClearPendingImage = {
+                            pendingImageUri = null
+                        },
+                        onSendMms = { address, body, imageUri ->
+                            lifecycleScope.launch {
+                                val result = smsRepository.sendMms(address, body, imageUri)
+                                if (result.isSuccess) {
+                                    pendingImageUri = null
+                                    if (showNewMessage) {
+                                        showNewMessage = false
+                                        kotlinx.coroutines.delay(500)
+                                        loadConversations()
+                                    } else {
+                                        currentThread?.let {
+                                            kotlinx.coroutines.delay(500)
+                                            loadMessages(it.threadId)
+                                        }
+                                    }
+                                } else {
+                                    Toast.makeText(
+                                        this@MessagingActivity,
+                                        "Failed to send MMS: ${result.exceptionOrNull()?.message}",
+                                        Toast.LENGTH_SHORT,
+                                    ).show()
+                                }
+                            }
                         },
                     )
                 }
@@ -149,10 +195,14 @@ class MessagingActivity : ComponentActivity() {
     @Deprecated("Use OnBackPressedDispatcher")
     override fun onBackPressed() {
         when {
-            showNewMessage -> showNewMessage = false
+            showNewMessage -> {
+                showNewMessage = false
+                pendingImageUri = null
+            }
             currentThread != null -> {
                 currentThread = null
                 messages = emptyList()
+                pendingImageUri = null
                 loadConversations()
             }
             else -> {
@@ -178,15 +228,10 @@ class MessagingActivity : ComponentActivity() {
         lifecycleScope.launch {
             val result = smsRepository.sendSms(address, body)
             if (result.isSuccess) {
-                // Reload messages after a short delay to let the system process
                 kotlinx.coroutines.delay(500)
                 loadMessages(threadId)
             } else {
-                Toast.makeText(
-                    this@MessagingActivity,
-                    "Failed to send message",
-                    Toast.LENGTH_SHORT,
-                ).show()
+                Toast.makeText(this@MessagingActivity, "Failed to send message", Toast.LENGTH_SHORT).show()
             }
         }
     }

@@ -1,11 +1,6 @@
 package dev.nighttraders.lumo.launcher.messaging
 
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.animation.togetherWith
+import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -18,6 +13,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -53,17 +49,17 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 
 // Ubuntu Touch palette
-private val BgDark = Color(0xFF1A0816)
 private val BgGradientTop = Color(0xFF2C001E)
 private val BgGradientMid = Color(0xFF1A0816)
 private val BgGradientBottom = Color(0xFF0C0A10)
@@ -93,6 +89,10 @@ fun MessagingScreen(
     onShareMessage: (SmsMessage) -> Unit = {},
     onDeleteMessage: (SmsMessage) -> Unit = {},
     onSearchContacts: suspend (String) -> List<SmsRepository.ContactResult> = { emptyList() },
+    onAttachImage: () -> Unit = {},
+    pendingImageUri: Uri? = null,
+    onClearPendingImage: () -> Unit = {},
+    onSendMms: (address: String, body: String, imageUri: Uri) -> Unit = { _, _, _ -> },
 ) {
     Box(
         modifier = Modifier
@@ -110,6 +110,10 @@ fun MessagingScreen(
                     onBack = onCancelNewMessage,
                     onSend = onSendNewMessage,
                     onSearchContacts = onSearchContacts,
+                    onAttachImage = onAttachImage,
+                    pendingImageUri = pendingImageUri,
+                    onClearPendingImage = onClearPendingImage,
+                    onSendMms = onSendMms,
                 )
             }
             currentThread != null -> {
@@ -120,6 +124,12 @@ fun MessagingScreen(
                     onSend = onSend,
                     onShareMessage = onShareMessage,
                     onDeleteMessage = onDeleteMessage,
+                    onAttachImage = onAttachImage,
+                    pendingImageUri = pendingImageUri,
+                    onClearPendingImage = onClearPendingImage,
+                    onSendMms = { body, imageUri ->
+                        onSendMms(currentThread.address, body, imageUri)
+                    },
                 )
             }
             else -> {
@@ -142,7 +152,6 @@ private fun ConversationListScreen(
     onNewMessage: () -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
-        // Header
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -172,17 +181,9 @@ private fun ConversationListScreen(
                 contentAlignment = Alignment.Center,
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = "No messages",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = TextMuted,
-                    )
+                    Text("No messages", style = MaterialTheme.typography.bodyLarge, color = TextMuted)
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "Tap + to start a conversation",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = TextMuted,
-                    )
+                    Text("Tap + to start a conversation", style = MaterialTheme.typography.bodyMedium, color = TextMuted)
                 }
             }
         } else {
@@ -191,15 +192,8 @@ private fun ConversationListScreen(
                 contentPadding = PaddingValues(bottom = 16.dp),
             ) {
                 items(conversations, key = { it.threadId }) { conversation ->
-                    ConversationRow(
-                        conversation = conversation,
-                        onClick = { onSelect(conversation) },
-                    )
-                    HorizontalDivider(
-                        color = DividerColor,
-                        thickness = 0.5.dp,
-                        modifier = Modifier.padding(start = 80.dp),
-                    )
+                    ConversationRow(conversation = conversation, onClick = { onSelect(conversation) })
+                    HorizontalDivider(color = DividerColor, thickness = 0.5.dp, modifier = Modifier.padding(start = 80.dp))
                 }
             }
         }
@@ -207,10 +201,7 @@ private fun ConversationListScreen(
 }
 
 @Composable
-private fun ConversationRow(
-    conversation: SmsConversation,
-    onClick: () -> Unit,
-) {
+private fun ConversationRow(conversation: SmsConversation, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -218,7 +209,6 @@ private fun ConversationRow(
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.Top,
     ) {
-        // Avatar
         Box(
             modifier = Modifier
                 .size(52.dp)
@@ -228,14 +218,10 @@ private fun ConversationRow(
         ) {
             Text(
                 text = conversation.contactName.firstOrNull()?.uppercase() ?: "#",
-                fontSize = 22.sp,
-                fontWeight = FontWeight.Medium,
-                color = Color.White,
+                fontSize = 22.sp, fontWeight = FontWeight.Medium, color = Color.White,
             )
         }
-
         Spacer(modifier = Modifier.width(12.dp))
-
         Column(modifier = Modifier.weight(1f)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -245,11 +231,8 @@ private fun ConversationRow(
                 Text(
                     text = conversation.contactName,
                     fontWeight = if (conversation.unreadCount > 0) FontWeight.Bold else FontWeight.Medium,
-                    fontSize = 16.sp,
-                    color = TextPrimary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
+                    fontSize = 16.sp, color = TextPrimary, maxLines = 1,
+                    overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
                 )
                 Text(
                     text = SmsRepository.formatTimestamp(conversation.timestamp),
@@ -257,33 +240,19 @@ private fun ConversationRow(
                     color = if (conversation.unreadCount > 0) UbuntuOrange else TextSecondary,
                 )
             }
-
             Spacer(modifier = Modifier.height(2.dp))
-
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = conversation.snippet,
-                    fontSize = 14.sp,
-                    color = TextSecondary,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
+                    text = conversation.snippet, fontSize = 14.sp, color = TextSecondary,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
                 )
                 if (conversation.unreadCount > 0) {
                     Spacer(modifier = Modifier.width(8.dp))
                     Box(
-                        modifier = Modifier
-                            .size(22.dp)
-                            .clip(CircleShape)
-                            .background(UnreadBadge),
+                        modifier = Modifier.size(22.dp).clip(CircleShape).background(UnreadBadge),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text(
-                            text = conversation.unreadCount.toString(),
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White,
-                        )
+                        Text(conversation.unreadCount.toString(), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
                     }
                 }
             }
@@ -301,73 +270,46 @@ private fun ThreadScreen(
     onSend: (String) -> Unit,
     onShareMessage: (SmsMessage) -> Unit = {},
     onDeleteMessage: (SmsMessage) -> Unit = {},
+    onAttachImage: () -> Unit = {},
+    pendingImageUri: Uri? = null,
+    onClearPendingImage: () -> Unit = {},
+    onSendMms: (body: String, imageUri: Uri) -> Unit = { _, _ -> },
 ) {
     val listState = rememberLazyListState()
     var inputText by rememberSaveable { mutableStateOf("") }
     var selectedMessage by remember { mutableStateOf<SmsMessage?>(null) }
     var replyToMessage by remember { mutableStateOf<SmsMessage?>(null) }
 
-    // Auto-scroll to bottom when messages change
     LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) {
             listState.animateScrollToItem(messages.size - 1)
         }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .imePadding(),
-    ) {
+    Column(modifier = Modifier.fillMaxSize().imePadding()) {
         // Thread header
-        Surface(
-            color = Color(0xFF2C001E),
-        ) {
+        Surface(color = Color(0xFF2C001E)) {
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 12.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 IconButton(onClick = onBack) {
-                    Text(
-                        text = "\u2190",
-                        fontSize = 24.sp,
-                        color = TextPrimary,
-                    )
+                    Text("\u2190", fontSize = 24.sp, color = TextPrimary)
                 }
-
-                // Avatar
                 Box(
-                    modifier = Modifier
-                        .size(36.dp)
-                        .clip(CircleShape)
-                        .background(avatarColor(conversation.address)),
+                    modifier = Modifier.size(36.dp).clip(CircleShape).background(avatarColor(conversation.address)),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        text = conversation.contactName.firstOrNull()?.uppercase() ?: "#",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = Color.White,
+                        conversation.contactName.firstOrNull()?.uppercase() ?: "#",
+                        fontSize = 16.sp, fontWeight = FontWeight.Medium, color = Color.White,
                     )
                 }
-
                 Spacer(modifier = Modifier.width(12.dp))
-
                 Column {
-                    Text(
-                        text = conversation.contactName,
-                        fontWeight = FontWeight.Medium,
-                        fontSize = 17.sp,
-                        color = TextPrimary,
-                    )
+                    Text(conversation.contactName, fontWeight = FontWeight.Medium, fontSize = 17.sp, color = TextPrimary)
                     if (conversation.contactName != conversation.address) {
-                        Text(
-                            text = conversation.address,
-                            fontSize = 12.sp,
-                            color = TextSecondary,
-                        )
+                        Text(conversation.address, fontSize = 12.sp, color = TextSecondary)
                     }
                 }
             }
@@ -376,13 +318,11 @@ private fun ThreadScreen(
         // Messages
         LazyColumn(
             state = listState,
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth(),
+            modifier = Modifier.weight(1f).fillMaxWidth(),
             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            items(messages, key = { it.id }) { message ->
+            items(messages, key = { "${it.id}_${it.isMms}" }) { message ->
                 MessageBubble(
                     message = message,
                     isSelected = selectedMessage?.id == message.id,
@@ -392,23 +332,13 @@ private fun ThreadScreen(
             }
         }
 
-        // Message action bar (appears when a message is long-pressed)
+        // Message action bar
         AnimatedVisibility(visible = selectedMessage != null) {
             selectedMessage?.let { msg ->
                 MessageActionBar(
-                    onReply = {
-                        replyToMessage = msg
-                        inputText = ""
-                        selectedMessage = null
-                    },
-                    onShare = {
-                        onShareMessage(msg)
-                        selectedMessage = null
-                    },
-                    onDelete = {
-                        onDeleteMessage(msg)
-                        selectedMessage = null
-                    },
+                    onReply = { replyToMessage = msg; inputText = ""; selectedMessage = null },
+                    onShare = { onShareMessage(msg); selectedMessage = null },
+                    onDelete = { onDeleteMessage(msg); selectedMessage = null },
                     onDismiss = { selectedMessage = null },
                 )
             }
@@ -418,55 +348,60 @@ private fun ThreadScreen(
         if (replyToMessage != null) {
             Surface(color = Color(0xFF2A1F2E)) {
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .width(3.dp)
-                            .height(32.dp)
-                            .background(UbuntuOrange),
-                    )
+                    Box(modifier = Modifier.width(3.dp).height(32.dp).background(UbuntuOrange))
                     Spacer(modifier = Modifier.width(8.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Reply",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = UbuntuOrange,
-                        )
-                        Text(
-                            text = replyToMessage!!.body,
-                            fontSize = 12.sp,
-                            color = TextSecondary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
+                        Text("Reply", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = UbuntuOrange)
+                        Text(replyToMessage!!.body, fontSize = 12.sp, color = TextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
-                    Text(
-                        text = "\u2715",
-                        fontSize = 18.sp,
-                        color = TextMuted,
-                        modifier = Modifier
-                            .clickable { replyToMessage = null }
-                            .padding(8.dp),
+                    Text("\u2715", fontSize = 18.sp, color = TextMuted, modifier = Modifier.clickable { replyToMessage = null }.padding(8.dp))
+                }
+            }
+        }
+
+        // Pending image preview
+        if (pendingImageUri != null) {
+            Surface(color = Color(0xFF2A1F2E)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    AsyncImage(
+                        model = pendingImageUri,
+                        contentDescription = "Attached image",
+                        modifier = Modifier.size(56.dp).clip(RoundedCornerShape(8.dp)),
+                        contentScale = ContentScale.Crop,
                     )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Image attached", fontSize = 13.sp, color = TextSecondary, modifier = Modifier.weight(1f))
+                    Text("\u2715", fontSize = 18.sp, color = TextMuted, modifier = Modifier.clickable { onClearPendingImage() }.padding(8.dp))
                 }
             }
         }
 
         // Input bar
-        Surface(
-            color = Color(0xDD0E0A10),
-        ) {
+        Surface(color = Color(0xDD0E0A10)) {
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                // Attach button
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFF3C2847))
+                        .clickable { onAttachImage() },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("\uD83D\uDCCE", fontSize = 16.sp)
+                }
+
+                Spacer(modifier = Modifier.width(8.dp))
+
                 BasicTextField(
                     value = inputText,
                     onValueChange = { inputText = it },
@@ -475,15 +410,15 @@ private fun ThreadScreen(
                         .clip(RoundedCornerShape(20.dp))
                         .background(InputBg)
                         .padding(horizontal = 16.dp, vertical = 10.dp),
-                    textStyle = TextStyle(
-                        color = TextPrimary,
-                        fontSize = 15.sp,
-                    ),
+                    textStyle = TextStyle(color = TextPrimary, fontSize = 15.sp),
                     cursorBrush = SolidColor(UbuntuOrange),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                     keyboardActions = KeyboardActions(
                         onSend = {
-                            if (inputText.isNotBlank()) {
+                            if (pendingImageUri != null) {
+                                onSendMms(inputText.trim(), pendingImageUri)
+                                inputText = ""
+                            } else if (inputText.isNotBlank()) {
                                 onSend(inputText.trim())
                                 inputText = ""
                             }
@@ -492,11 +427,7 @@ private fun ThreadScreen(
                     decorationBox = { innerTextField ->
                         Box {
                             if (inputText.isEmpty()) {
-                                Text(
-                                    text = "Type a message...",
-                                    color = TextMuted,
-                                    fontSize = 15.sp,
-                                )
+                                Text("Type a message...", color = TextMuted, fontSize = 15.sp)
                             }
                             innerTextField()
                         }
@@ -505,35 +436,29 @@ private fun ThreadScreen(
 
                 Spacer(modifier = Modifier.width(8.dp))
 
-                // Send button
+                val canSend = inputText.isNotBlank() || pendingImageUri != null
                 Box(
                     modifier = Modifier
                         .size(40.dp)
                         .clip(CircleShape)
-                        .background(if (inputText.isNotBlank()) UbuntuOrange else Color(0xFF3C2847))
-                        .clickable(enabled = inputText.isNotBlank()) {
-                            onSend(inputText.trim())
-                            inputText = ""
+                        .background(if (canSend) UbuntuOrange else Color(0xFF3C2847))
+                        .clickable(enabled = canSend) {
+                            if (pendingImageUri != null) {
+                                onSendMms(inputText.trim(), pendingImageUri)
+                                inputText = ""
+                            } else {
+                                onSend(inputText.trim())
+                                inputText = ""
+                            }
                         },
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(
-                        text = "\u2191",
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White,
-                    )
+                    Text("\u2191", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.White)
                 }
             }
         }
 
-        // Orange accent bar at the very bottom (Ubuntu Touch style)
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(2.dp)
-                .background(UbuntuOrange),
-        )
+        Box(modifier = Modifier.fillMaxWidth().height(2.dp).background(UbuntuOrange))
     }
 }
 
@@ -547,14 +472,10 @@ private fun MessageBubble(
 ) {
     val isOutgoing = message.isOutgoing
     val alignment = if (isOutgoing) Alignment.CenterEnd else Alignment.CenterStart
-    val bubbleColor = if (isSelected) {
-        Color(0xFF5E2750)
-    } else if (isOutgoing) BubbleOutgoing else BubbleIncoming
-    val shape = if (isOutgoing) {
-        RoundedCornerShape(16.dp, 16.dp, 4.dp, 16.dp)
-    } else {
-        RoundedCornerShape(16.dp, 16.dp, 16.dp, 4.dp)
-    }
+    val bubbleColor = if (isSelected) Color(0xFF5E2750)
+    else if (isOutgoing) BubbleOutgoing else BubbleIncoming
+    val shape = if (isOutgoing) RoundedCornerShape(16.dp, 16.dp, 4.dp, 16.dp)
+    else RoundedCornerShape(16.dp, 16.dp, 16.dp, 4.dp)
 
     Box(
         modifier = Modifier
@@ -568,31 +489,58 @@ private fun MessageBubble(
         Box(
             modifier = Modifier
                 .clip(shape)
-                .combinedClickable(
-                    onClick = onTap,
-                    onLongClick = onLongPress,
-                ),
+                .combinedClickable(onClick = onTap, onLongClick = onLongPress),
         ) {
-            Surface(
-                color = bubbleColor,
-                shape = shape,
-            ) {
-                Column(
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-                ) {
-                    Text(
-                        text = message.body,
-                        fontSize = 15.sp,
-                        color = TextPrimary,
-                        lineHeight = 20.sp,
-                    )
+            Surface(color = bubbleColor, shape = shape) {
+                Column(modifier = Modifier.padding(
+                    start = if (message.imageUri != null) 0.dp else 14.dp,
+                    end = if (message.imageUri != null) 0.dp else 14.dp,
+                    top = if (message.imageUri != null) 0.dp else 8.dp,
+                    bottom = 8.dp,
+                )) {
+                    // MMS image
+                    if (message.imageUri != null) {
+                        AsyncImage(
+                            model = message.imageUri,
+                            contentDescription = "MMS image",
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(4f / 3f)
+                                .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)),
+                            contentScale = ContentScale.Crop,
+                        )
+                        if (message.body.isNotBlank()) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                        }
+                    }
+
+                    // Text body
+                    if (message.body.isNotBlank()) {
+                        Text(
+                            text = message.body,
+                            fontSize = 15.sp,
+                            color = TextPrimary,
+                            lineHeight = 20.sp,
+                            modifier = Modifier.padding(
+                                horizontal = if (message.imageUri != null) 14.dp else 0.dp,
+                            ),
+                        )
+                    }
+
                     Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = SmsRepository.formatTimestamp(message.timestamp),
-                        fontSize = 11.sp,
-                        color = TextMuted,
-                        modifier = Modifier.align(Alignment.End),
-                    )
+                    Row(
+                        modifier = Modifier
+                            .align(Alignment.End)
+                            .padding(horizontal = if (message.imageUri != null) 14.dp else 0.dp),
+                    ) {
+                        if (message.isMms) {
+                            Text("MMS \u00B7 ", fontSize = 11.sp, color = TextMuted)
+                        }
+                        Text(
+                            text = SmsRepository.formatTimestamp(message.timestamp),
+                            fontSize = 11.sp, color = TextMuted,
+                        )
+                    }
                 }
             }
         }
@@ -610,9 +558,7 @@ private fun MessageActionBar(
 ) {
     Surface(color = Color(0xEE1A0816)) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 4.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.SpaceEvenly,
         ) {
             ActionButton(label = "Reply", icon = "\u21A9", onClick = onReply)
@@ -624,29 +570,14 @@ private fun MessageActionBar(
 }
 
 @Composable
-private fun ActionButton(
-    label: String,
-    icon: String,
-    color: Color = TextPrimary,
-    onClick: () -> Unit,
-) {
+private fun ActionButton(label: String, icon: String, color: Color = TextPrimary, onClick: () -> Unit) {
     Column(
-        modifier = Modifier
-            .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+        modifier = Modifier.clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text(
-            text = icon,
-            fontSize = 20.sp,
-            color = color,
-        )
+        Text(icon, fontSize = 20.sp, color = color)
         Spacer(modifier = Modifier.height(2.dp))
-        Text(
-            text = label,
-            fontSize = 11.sp,
-            color = TextSecondary,
-        )
+        Text(label, fontSize = 11.sp, color = TextSecondary)
     }
 }
 
@@ -657,13 +588,16 @@ private fun NewMessageScreen(
     onBack: () -> Unit,
     onSend: (address: String, body: String) -> Unit,
     onSearchContacts: suspend (String) -> List<SmsRepository.ContactResult> = { emptyList() },
+    onAttachImage: () -> Unit = {},
+    pendingImageUri: Uri? = null,
+    onClearPendingImage: () -> Unit = {},
+    onSendMms: (address: String, body: String, imageUri: Uri) -> Unit = { _, _, _ -> },
 ) {
     var recipientText by rememberSaveable { mutableStateOf("") }
     var messageText by rememberSaveable { mutableStateOf("") }
     var contactSuggestions by remember { mutableStateOf<List<SmsRepository.ContactResult>>(emptyList()) }
     var showSuggestions by remember { mutableStateOf(false) }
 
-    // Search contacts as user types
     LaunchedEffect(recipientText) {
         if (recipientText.length >= 2) {
             contactSuggestions = onSearchContacts(recipientText)
@@ -675,43 +609,23 @@ private fun NewMessageScreen(
     }
 
     Column(modifier = Modifier.fillMaxSize().imePadding()) {
-        // Header
         Surface(color = Color(0xFF2C001E)) {
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 12.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                IconButton(onClick = onBack) {
-                    Text(
-                        text = "\u2190",
-                        fontSize = 24.sp,
-                        color = TextPrimary,
-                    )
-                }
-                Text(
-                    text = "New message",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Light,
-                    color = TextPrimary,
-                )
+                IconButton(onClick = onBack) { Text("\u2190", fontSize = 24.sp, color = TextPrimary) }
+                Text("New message", fontSize = 18.sp, fontWeight = FontWeight.Light, color = TextPrimary)
             }
         }
 
         // Recipient field
         Surface(color = Color(0xFF1E1A24)) {
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    text = "To:",
-                    fontSize = 15.sp,
-                    color = TextSecondary,
-                )
+                Text("To:", fontSize = 15.sp, color = TextSecondary)
                 Spacer(modifier = Modifier.width(12.dp))
                 BasicTextField(
                     value = recipientText,
@@ -724,11 +638,7 @@ private fun NewMessageScreen(
                     decorationBox = { innerTextField ->
                         Box {
                             if (recipientText.isEmpty()) {
-                                Text(
-                                    text = "Name or phone number",
-                                    color = TextMuted,
-                                    fontSize = 15.sp,
-                                )
+                                Text("Name or phone number", color = TextMuted, fontSize = 15.sp)
                             }
                             innerTextField()
                         }
@@ -737,7 +647,7 @@ private fun NewMessageScreen(
             }
         }
 
-        // Contact suggestions dropdown
+        // Contact suggestions
         AnimatedVisibility(visible = showSuggestions) {
             Surface(color = Color(0xFF1E1A24)) {
                 Column {
@@ -745,41 +655,20 @@ private fun NewMessageScreen(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable {
-                                    recipientText = contact.phoneNumber
-                                    showSuggestions = false
-                                }
+                                .clickable { recipientText = contact.phoneNumber; showSuggestions = false }
                                 .padding(horizontal = 16.dp, vertical = 10.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            // Avatar
                             Box(
-                                modifier = Modifier
-                                    .size(36.dp)
-                                    .clip(CircleShape)
-                                    .background(avatarColor(contact.phoneNumber)),
+                                modifier = Modifier.size(36.dp).clip(CircleShape).background(avatarColor(contact.phoneNumber)),
                                 contentAlignment = Alignment.Center,
                             ) {
-                                Text(
-                                    text = contact.name.firstOrNull()?.uppercase() ?: "#",
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    color = Color.White,
-                                )
+                                Text(contact.name.firstOrNull()?.uppercase() ?: "#", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = Color.White)
                             }
                             Spacer(modifier = Modifier.width(12.dp))
                             Column {
-                                Text(
-                                    text = contact.name,
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    color = TextPrimary,
-                                )
-                                Text(
-                                    text = contact.phoneNumber,
-                                    fontSize = 13.sp,
-                                    color = TextSecondary,
-                                )
+                                Text(contact.name, fontSize = 15.sp, fontWeight = FontWeight.Medium, color = TextPrimary)
+                                Text(contact.phoneNumber, fontSize = 13.sp, color = TextSecondary)
                             }
                         }
                         HorizontalDivider(color = DividerColor, thickness = 0.5.dp)
@@ -789,6 +678,26 @@ private fun NewMessageScreen(
         }
 
         HorizontalDivider(color = DividerColor, thickness = 0.5.dp)
+
+        // Pending image preview
+        if (pendingImageUri != null) {
+            Surface(color = Color(0xFF2A1F2E)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    AsyncImage(
+                        model = pendingImageUri,
+                        contentDescription = "Attached image",
+                        modifier = Modifier.size(56.dp).clip(RoundedCornerShape(8.dp)),
+                        contentScale = ContentScale.Crop,
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Image attached", fontSize = 13.sp, color = TextSecondary, modifier = Modifier.weight(1f))
+                    Text("\u2715", fontSize = 18.sp, color = TextMuted, modifier = Modifier.clickable { onClearPendingImage() }.padding(8.dp))
+                }
+            }
+        }
 
         // Message area
         Box(modifier = Modifier.weight(1f).fillMaxWidth().padding(16.dp)) {
@@ -801,11 +710,7 @@ private fun NewMessageScreen(
                 decorationBox = { innerTextField ->
                     Box {
                         if (messageText.isEmpty()) {
-                            Text(
-                                text = "Type your message...",
-                                color = TextMuted,
-                                fontSize = 15.sp,
-                            )
+                            Text("Type your message...", color = TextMuted, fontSize = 15.sp)
                         }
                         innerTextField()
                     }
@@ -816,39 +721,40 @@ private fun NewMessageScreen(
         // Send bar
         Surface(color = Color(0xDD0E0A10)) {
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.End,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                val canSend = recipientText.isNotBlank() && messageText.isNotBlank()
+                // Attach button
+                Box(
+                    modifier = Modifier.size(36.dp).clip(CircleShape).background(Color(0xFF3C2847)).clickable { onAttachImage() },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("\uD83D\uDCCE", fontSize = 16.sp)
+                }
+
+                Spacer(modifier = Modifier.weight(1f))
+
+                val canSend = recipientText.isNotBlank() && (messageText.isNotBlank() || pendingImageUri != null)
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(20.dp))
                         .background(if (canSend) UbuntuOrange else Color(0xFF3C2847))
                         .clickable(enabled = canSend) {
-                            onSend(recipientText.trim(), messageText.trim())
+                            if (pendingImageUri != null) {
+                                onSendMms(recipientText.trim(), messageText.trim(), pendingImageUri)
+                            } else {
+                                onSend(recipientText.trim(), messageText.trim())
+                            }
                         }
                         .padding(horizontal = 24.dp, vertical = 10.dp),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(
-                        text = "Send",
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = Color.White,
-                    )
+                    Text("Send", fontSize = 15.sp, fontWeight = FontWeight.Medium, color = Color.White)
                 }
             }
         }
 
-        // Orange accent bar
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(2.dp)
-                .background(UbuntuOrange),
-        )
+        Box(modifier = Modifier.fillMaxWidth().height(2.dp).background(UbuntuOrange))
     }
 }
 
@@ -856,14 +762,8 @@ private fun NewMessageScreen(
 
 private fun avatarColor(address: String): Color {
     val colors = listOf(
-        Color(0xFFE95420), // Ubuntu orange
-        Color(0xFF77216F), // Ubuntu aubergine
-        Color(0xFF5E2750), // Purple
-        Color(0xFF2C001E), // Dark aubergine
-        Color(0xFFAA3926), // Warm red
-        Color(0xFF38B44A), // Green
-        Color(0xFF19B6EE), // Blue
-        Color(0xFFEF7D00), // Amber
+        Color(0xFFE95420), Color(0xFF77216F), Color(0xFF5E2750), Color(0xFF2C001E),
+        Color(0xFFAA3926), Color(0xFF38B44A), Color(0xFF19B6EE), Color(0xFFEF7D00),
     )
     return colors[address.hashCode().and(0x7FFFFFFF) % colors.size]
 }

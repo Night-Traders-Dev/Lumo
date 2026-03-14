@@ -26,6 +26,7 @@ class TerminalSession(
     private var process: Process? = null
     private var outputStream: OutputStream? = null
     private var readJob: Job? = null
+    private var localEcho = true
 
     private val _output = MutableSharedFlow<String>(replay = 64, extraBufferCapacity = 256)
     val output: SharedFlow<String> = _output.asSharedFlow()
@@ -104,6 +105,18 @@ class TerminalSession(
             outputStream?.let { os ->
                 os.write(data.toByteArray())
                 os.flush()
+            }
+            // Local echo — without a PTY, the shell won't echo input back
+            if (localEcho) {
+                scope.launch {
+                    for (c in data) {
+                        when (c) {
+                            '\u007F', '\b' -> _output.emit("\b \b") // Backspace: erase character
+                            '\r', '\n' -> _output.emit("\r\n")
+                            else -> if (c.code >= 32) _output.emit(c.toString())
+                        }
+                    }
+                }
             }
         } catch (_: Exception) {}
     }
