@@ -34,9 +34,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -44,6 +46,7 @@ import androidx.compose.material.icons.rounded.AirplanemodeActive
 import androidx.compose.material.icons.rounded.Apps
 import androidx.compose.material.icons.rounded.Battery6Bar
 import androidx.compose.material.icons.rounded.Bluetooth
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.FlashlightOn
 import androidx.compose.material.icons.rounded.Home
@@ -83,6 +86,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -666,6 +670,11 @@ private fun MultitaskOverlay(
     val appsToShow = remember(recentApps, allApps) {
         recentApps.ifEmpty { allApps.take(6) }.take(8)
     }
+    // Track dismissed cards locally so swipe-away removes them from view
+    var dismissedKeys by remember { mutableStateOf(emptySet<String>()) }
+    val visibleApps = remember(appsToShow, dismissedKeys) {
+        appsToShow.filterNot { it.componentKey in dismissedKeys }
+    }
 
     Box(
         modifier = Modifier
@@ -683,33 +692,10 @@ private fun MultitaskOverlay(
                 detectTapGestures { onDismiss() }
             }
             .windowInsetsPadding(WindowInsets.systemBars)
-            .padding(horizontal = 16.dp, vertical = 20.dp),
+            .padding(horizontal = 12.dp, vertical = 16.dp),
     ) {
-        Column(
-            modifier = Modifier.fillMaxSize(),
-        ) {
-            // Header
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 20.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = "Running Apps",
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White,
-                )
-                Text(
-                    text = "Tap to dismiss",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = Color(0x99FFFFFF),
-                )
-            }
-
-            if (appsToShow.isEmpty()) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            if (visibleApps.isEmpty()) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -723,19 +709,26 @@ private fun MultitaskOverlay(
                     )
                 }
             } else {
-                // Ubuntu Touch style: 2-column grid of app cards
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(2),
+                // Ubuntu Touch style: spread cards in a vertical list
+                LazyColumn(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 8.dp),
                 ) {
-                    items(appsToShow, key = { it.componentKey }) { app ->
+                    items(
+                        items = visibleApps,
+                        key = { it.componentKey },
+                    ) { app ->
                         MultitaskAppCard(
                             app = app,
-                            onClick = { onLaunchApp(app) },
+                            onClick = {
+                                onLaunchApp(app)
+                            },
+                            onSwipeDismiss = {
+                                dismissedKeys = dismissedKeys + app.componentKey
+                            },
                         )
                     }
                 }
@@ -744,61 +737,108 @@ private fun MultitaskOverlay(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun MultitaskAppCard(
     app: LaunchableApp,
     onClick: () -> Unit,
+    onSwipeDismiss: () -> Unit,
 ) {
+    // Swipe-to-dismiss offset
+    var offsetX by remember { mutableStateOf(0f) }
+    val animatedOffset by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = offsetX,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMediumLow,
+        ),
+        label = "cardSwipe",
+    )
+
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .height(160.dp)
-            .clip(RoundedCornerShape(16.dp))
-            .clickable(onClick = onClick),
-        color = Color(0x33FFFFFF),
-        shape = RoundedCornerShape(16.dp),
-        shadowElevation = 6.dp,
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    brush = Brush.verticalGradient(
-                        colors = listOf(
-                            Color(0x221A1420),
-                            Color(0x44000000),
-                        ),
-                    ),
+            .height(140.dp)
+            .graphicsLayer {
+                translationX = animatedOffset
+                alpha = (1f - (kotlin.math.abs(animatedOffset) / 800f)).coerceIn(0f, 1f)
+            }
+            .pointerInput(Unit) {
+                var totalDrag = 0f
+                detectHorizontalDragGestures(
+                    onHorizontalDrag = { _, dragAmount ->
+                        totalDrag += dragAmount
+                        offsetX = totalDrag
+                    },
+                    onDragCancel = {
+                        totalDrag = 0f
+                        offsetX = 0f
+                    },
+                    onDragEnd = {
+                        if (kotlin.math.abs(totalDrag) > 200f) {
+                            offsetX = if (totalDrag > 0) 1200f else -1200f
+                            onSwipeDismiss()
+                        } else {
+                            totalDrag = 0f
+                            offsetX = 0f
+                        }
+                    },
                 )
-                .padding(12.dp),
-            verticalArrangement = Arrangement.SpaceBetween,
-        ) {
-            // App icon + name at top
+            }
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick),
+        color = Color(0xFF1C1826),
+        shape = RoundedCornerShape(12.dp),
+        shadowElevation = 8.dp,
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            // Ubuntu Touch title bar — dark bar with app icon + name + close button
             Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color(0xFF2C2538))
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                AppIcon(app = app, size = 32.dp)
+                AppIcon(app = app, size = 20.dp)
+                Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = app.label,
-                    style = MaterialTheme.typography.labelLarge,
+                    style = MaterialTheme.typography.labelMedium,
                     color = Color.White,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
                 )
+                Box(
+                    modifier = Modifier
+                        .size(24.dp)
+                        .clip(CircleShape)
+                        .background(Color(0x44FFFFFF))
+                        .clickable(onClick = onSwipeDismiss),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Close,
+                        contentDescription = "Close",
+                        tint = Color.White,
+                        modifier = Modifier.size(14.dp),
+                    )
+                }
             }
 
-            // Placeholder content area (simulated window)
+            // Window preview area
             Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .padding(top = 8.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Color(0x22FFFFFF)),
+                    .fillMaxSize()
+                    .background(
+                        brush = Brush.verticalGradient(
+                            colors = listOf(Color(0xFF201A2A), Color(0xFF16101E)),
+                        ),
+                    ),
                 contentAlignment = Alignment.Center,
             ) {
-                AppIcon(app = app, size = 40.dp)
+                AppIcon(app = app, size = 48.dp)
             }
         }
     }
@@ -2075,6 +2115,15 @@ private fun AppsScopePage(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .background(
+                brush = Brush.verticalGradient(
+                    colors = listOf(
+                        Color(0xFF0C0A10),
+                        Color(0xFF1A0816),
+                        Color(0xFF2C001E),
+                    ),
+                ),
+            )
             .padding(horizontal = 10.dp, vertical = 18.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
