@@ -7,14 +7,10 @@ import android.content.Intent
 import android.content.BroadcastReceiver
 import android.content.IntentFilter
 import android.content.pm.PackageManager
-import android.graphics.PixelFormat
 import android.hardware.camera2.CameraManager
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
-import android.view.Gravity
-import android.view.View
-import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -60,7 +56,6 @@ class MainActivity : ComponentActivity() {
     private val isFlashlightOn = mutableStateOf(false)
     private var torchCallback: CameraManager.TorchCallback? = null
     private val screenReceiver = LumoUnlockReceiver()
-    private var statusBarBlockerView: View? = null
     private val packageChangeReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             viewModel.refreshApps(force = true)
@@ -93,7 +88,6 @@ class MainActivity : ComponentActivity() {
         requestLocationIfNeeded()
         loadSecurityState()
         refreshWeather()
-        observeLockState()
 
         setContent {
             val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -119,7 +113,6 @@ class MainActivity : ComponentActivity() {
                         else LockScreenActivity.hashWithSalt(sanitized, lockScreenSecuritySalt.value) == lockScreenSecurityHash.value
                     },
                     onDashUnlock = {
-                        removeStatusBarBlocker()
                         LumoLockState.unlock()
                     },
                     onRequestDefaultHome = ::requestDefaultHomeRole,
@@ -226,7 +219,6 @@ class MainActivity : ComponentActivity() {
         configureSystemBars()
         refreshDefaultHomeState()
         refreshNotificationAccessState()
-        syncLockTaskState()
         viewModel.refreshApps() // no-op unless first load; use force=true for explicit refresh
         viewModel.refreshNotifications()
         loadSecurityState()
@@ -242,9 +234,6 @@ class MainActivity : ComponentActivity() {
             lockScreenSecurityType.value = repository.getLockScreenSecurityType()
             lockScreenSecurityHash.value = repository.getLockScreenSecurityHash()
             lockScreenSecuritySalt.value = repository.getLockScreenSecuritySalt()
-            // Security state is now known — sync lock task mode in case it was
-            // deferred because the type was still "loading" when observeLockState fired.
-            syncLockTaskState()
         }
     }
 
@@ -318,97 +307,7 @@ class MainActivity : ComponentActivity() {
     private fun hasSecurityConfigured(): Boolean =
         lockScreenSecurityType.value != "none" && lockScreenSecurityType.value != "loading"
 
-    /** Sync the status bar blocker with the current lock state. */
-    private fun syncLockTaskState() {
-        val shouldLock = LumoLockState.isLocked.value && hasSecurityConfigured()
-        if (shouldLock) {
-            addStatusBarBlocker()
-        } else {
-            removeStatusBarBlocker()
-        }
-    }
-
-    /**
-     * Observe lock state changes to add/remove the status bar blocker overlay.
-     * The overlay is a transparent fullscreen-width strip over the status bar
-     * area that intercepts all touch events, preventing the notification shade
-     * from being pulled down.
-     */
-    private fun observeLockState() {
-        lifecycleScope.launch {
-            LumoLockState.isLocked.collect { isLocked ->
-                val shouldLock = isLocked && hasSecurityConfigured()
-                if (shouldLock) {
-                    addStatusBarBlocker()
-                } else {
-                    removeStatusBarBlocker()
-                }
-                configureSystemBars()
-            }
-        }
-    }
-
-    /**
-     * Block access to the status bar by:
-     * 1. Adding FLAG_FULLSCREEN to the window — suppresses the status bar
-     * 2. Posting a transparent overlay above the status bar area to intercept swipe gestures
-     */
-    private fun addStatusBarBlocker() {
-        // FLAG_FULLSCREEN tells the system to hide the status bar and not allow pull-down
-        @Suppress("DEPRECATION")
-        window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
-
-        // Overlay as a belt-and-suspenders measure
-        if (statusBarBlockerView == null && Settings.canDrawOverlays(this)) {
-            val blocker = View(this).apply {
-                setBackgroundColor(android.graphics.Color.TRANSPARENT)
-                setOnTouchListener { _, _ -> true }
-            }
-
-            val statusBarHeight = runCatching {
-                resources.getDimensionPixelSize(
-                    resources.getIdentifier("status_bar_height", "dimen", "android"),
-                )
-            }.getOrDefault(100)
-
-            val params = WindowManager.LayoutParams(
-                WindowManager.LayoutParams.MATCH_PARENT,
-                statusBarHeight,
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-                } else {
-                    @Suppress("DEPRECATION")
-                    WindowManager.LayoutParams.TYPE_PHONE
-                },
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
-                PixelFormat.TRANSLUCENT,
-            ).apply {
-                gravity = Gravity.TOP or Gravity.START
-            }
-
-            runCatching {
-                getSystemService(WindowManager::class.java).addView(blocker, params)
-                statusBarBlockerView = blocker
-            }
-        }
-    }
-
-    private fun removeStatusBarBlocker() {
-        @Suppress("DEPRECATION")
-        window.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
-
-        statusBarBlockerView?.let { view ->
-            runCatching {
-                getSystemService(WindowManager::class.java).removeView(view)
-            }
-            statusBarBlockerView = null
-        }
-    }
-
     override fun onDestroy() {
-        removeStatusBarBlocker()
         runCatching { unregisterReceiver(screenReceiver) }
         runCatching { unregisterReceiver(packageChangeReceiver) }
         torchCallback?.let { cb ->
@@ -477,12 +376,7 @@ class MainActivity : ComponentActivity() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
         WindowInsetsControllerCompat(window, window.decorView).apply {
             hide(WindowInsetsCompat.Type.systemBars())
-            // When locked, use DEFAULT behavior to prevent transient status bar reveals
-            systemBarsBehavior = if (LumoLockState.isLocked.value && hasSecurityConfigured()) {
-                WindowInsetsControllerCompat.BEHAVIOR_DEFAULT
-            } else {
-                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-            }
+            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
     }
 
