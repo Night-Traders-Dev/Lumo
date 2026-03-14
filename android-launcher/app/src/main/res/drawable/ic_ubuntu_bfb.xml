@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Ubuntu Circle of Friends (BFB) logo -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+
+    <!-- Outer ring -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M24,4C12.95,4 4,12.95 4,24s8.95,20 20,20 20,-8.95 20,-20S35.05,4 24,4zM24,40c-8.84,0 -16,-7.16 -16,-16S15.16,8 24,8s16,7.16 16,16 -7.16,16 -16,16z" />
+
+    <!-- Top friend (head + body arc) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M24,11.5a3,3 0,1 0,0 6,3 3,0 0,0 0,-6z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M29.5,20.5a8,8 0,0 0,-11 0"
+        android:strokeWidth="2.5"
+        android:strokeColor="#FFFFFF"
+        android:fillType="nonZero" />
+
+    <!-- Bottom-left friend -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M13.2,29a3,3 0,1 0,0 6,3 3,0 0,0 0,-6z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M10.7,24.5a8,8 0,0 0,5.5 9.53"
+        android:strokeWidth="2.5"
+        android:strokeColor="#FFFFFF"
+        android:fillType="nonZero" />
+
+    <!-- Bottom-right friend -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M34.8,29a3,3 0,1 0,0 6,3 3,0 0,0 0,-6z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M31.8,33.53a8,8 0,0 0,5.5 -9.03"
+        android:strokeWidth="2.5"
+        android:strokeColor="#FFFFFF"
+        android:fillType="nonZero" />
+</vector>

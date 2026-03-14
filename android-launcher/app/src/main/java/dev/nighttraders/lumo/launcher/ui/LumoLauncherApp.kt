@@ -527,15 +527,8 @@ private fun UbuntuTouchTopBar(
                 .padding(horizontal = 12.dp),
         ) {
             Text(
-                text = currentPage.title,
-                modifier = Modifier.align(Alignment.CenterStart),
-                style = MaterialTheme.typography.labelLarge,
-                color = Color(0xFFE7DFEA),
-            )
-
-            Text(
                 text = status.timeLabel,
-                modifier = Modifier.align(Alignment.Center),
+                modifier = Modifier.align(Alignment.CenterStart),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Medium,
                 color = Color.White,
@@ -627,12 +620,18 @@ private fun IndicatorsSheet(
             } else {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     notifications.forEach { notification ->
-                        NotificationListItem(
+                        SimpleNotificationCard(
                             notification = notification,
                             onOpenNotification = onOpenNotification,
-                            onLongPressNotification = onLongPressNotification,
-                            onDismissNotification = onDismissNotification,
                         )
+                    }
+
+                    Button(
+                        onClick = {
+                            notifications.forEach { onDismissNotification(it) }
+                        },
+                    ) {
+                        Text("Dismiss All")
                     }
                 }
             }
@@ -718,93 +717,128 @@ private fun UbuntuTouchLauncherRail(
     onLaunchApp: (LaunchableApp) -> Unit,
     onToggleFavorite: (LaunchableApp) -> Unit,
 ) {
+    val dockSquircle = remember { SquircleShape() }
+
     Surface(
         modifier = Modifier
-            .width(72.dp)
+            .width(68.dp)
             .fillMaxHeight(),
-        color = Color(0x55000000),
-        shape = RoundedCornerShape(32.dp),
+        color = Color(0xCC0E0A10),
+        shape = RoundedCornerShape(0.dp),
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(vertical = 10.dp),
+                .padding(vertical = 8.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            RailActionButton(
-                icon = Icons.Rounded.Home,
-                selected = currentPage == ScopePage.Home,
-                onClick = onGoHome,
-            )
-
-            apps.forEach { app ->
-                RailAppButton(
-                    app = app,
-                    onLaunchApp = onLaunchApp,
-                    onToggleFavorite = onToggleFavorite,
+            // Ubuntu BFB button at top
+            Box(
+                modifier = Modifier
+                    .size(52.dp)
+                    .clip(CircleShape)
+                    .background(
+                        if (currentPage == ScopePage.Home) {
+                            Color(0xFFE95420)
+                        } else {
+                            Color(0x44FFFFFF)
+                        },
+                    )
+                    .clickable(onClick = onGoHome),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    painter = androidx.compose.ui.res.painterResource(
+                        id = dev.nighttraders.lumo.launcher.R.drawable.ic_ubuntu_bfb,
+                    ),
+                    contentDescription = "Home",
+                    tint = Color.White,
+                    modifier = Modifier.size(32.dp),
                 )
             }
 
-            Spacer(modifier = Modifier.weight(1f))
+            // Separator
+            DockSeparator()
 
-            RailActionButton(
-                icon = Icons.Rounded.Apps,
-                selected = currentPage == ScopePage.Apps,
-                onClick = onOpenApps,
-            )
+            // Pinned / favorite apps
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(vertical = 4.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                apps.forEach { app ->
+                    DockAppIcon(
+                        app = app,
+                        squircle = dockSquircle,
+                        onLaunchApp = onLaunchApp,
+                        onToggleFavorite = onToggleFavorite,
+                    )
+                }
+            }
 
-            RailActionButton(
-                icon = Icons.Rounded.Settings,
-                selected = false,
-                onClick = onOpenSettings,
-            )
+            // Separator
+            DockSeparator()
+
+            // App drawer button at bottom
+            Box(
+                modifier = Modifier
+                    .padding(top = 6.dp)
+                    .size(52.dp)
+                    .clip(dockSquircle)
+                    .background(
+                        if (currentPage == ScopePage.Apps) {
+                            Color(0xFFE95420)
+                        } else {
+                            Color(0x33FFFFFF)
+                        },
+                    )
+                    .clickable(onClick = onOpenApps),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Apps,
+                    contentDescription = "Apps",
+                    tint = Color.White,
+                    modifier = Modifier.size(28.dp),
+                )
+            }
         }
     }
 }
 
 @Composable
-private fun RailActionButton(
-    icon: ImageVector,
-    selected: Boolean,
-    onClick: () -> Unit,
-) {
+private fun DockSeparator() {
     Box(
         modifier = Modifier
-            .size(56.dp)
-            .clip(CircleShape)
-            .background(if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.95f) else Color.Transparent)
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = if (selected) MaterialTheme.colorScheme.onPrimary else Color.White,
-            modifier = Modifier.size(30.dp),
-        )
-    }
+            .padding(vertical = 6.dp)
+            .width(36.dp)
+            .height(1.dp)
+            .background(Color(0x44FFFFFF)),
+    )
 }
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun RailAppButton(
+private fun DockAppIcon(
     app: LaunchableApp,
+    squircle: Shape,
     onLaunchApp: (LaunchableApp) -> Unit,
     onToggleFavorite: (LaunchableApp) -> Unit,
 ) {
     Box(
         modifier = Modifier
-            .size(56.dp)
-            .clip(CircleShape)
-            .background(Color(0x22000000))
+            .size(52.dp)
+            .clip(squircle)
+            .background(Color(0x33FFFFFF))
             .combinedClickable(
                 onClick = { onLaunchApp(app) },
                 onLongClick = { onToggleFavorite(app) },
             ),
         contentAlignment = Alignment.Center,
     ) {
-        AppIcon(app = app, size = 38.dp)
+        AppIcon(app = app, size = 44.dp)
     }
 }
 
@@ -858,11 +892,9 @@ private fun HomeScopePage(
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     notifications.take(2).forEach { notification ->
-                        NotificationListItem(
+                        SimpleNotificationCard(
                             notification = notification,
                             onOpenNotification = onOpenNotification,
-                            onLongPressNotification = onLongPressNotification,
-                            onDismissNotification = onDismissNotification,
                         )
                     }
                 }
@@ -1115,6 +1147,47 @@ private fun NotificationActionRow(
             style = MaterialTheme.typography.bodyLarge,
             color = if (destructive) MaterialTheme.colorScheme.primary else Color.White,
         )
+    }
+}
+
+@Composable
+private fun SimpleNotificationCard(
+    notification: LauncherNotification,
+    onOpenNotification: (LauncherNotification) -> Unit,
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onOpenNotification(notification) },
+        color = Color(0x33000000),
+        shape = RoundedCornerShape(18.dp),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                text = notification.appLabel,
+                style = MaterialTheme.typography.labelSmall,
+                color = Color(0xFFB8AFBA),
+            )
+            Text(
+                text = notification.title,
+                style = MaterialTheme.typography.titleSmall,
+                color = Color.White,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (notification.message.isNotBlank()) {
+                Text(
+                    text = notification.message,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color(0xFFE7DFEA),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
     }
 }
 

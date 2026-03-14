@@ -4,10 +4,13 @@ import android.app.ActivityManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.PixelFormat
-import android.graphics.Typeface
 import android.graphics.drawable.BitmapDrawable
+import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.IBinder
@@ -21,9 +24,9 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.Space
 import android.widget.TextView
-import dev.nighttraders.lumo.launcher.LockScreenActivity
+import androidx.core.content.ContextCompat
 import dev.nighttraders.lumo.launcher.MainActivity
-import dev.nighttraders.lumo.launcher.SettingsActivity
+import dev.nighttraders.lumo.launcher.R
 import dev.nighttraders.lumo.launcher.data.LaunchableApp
 import dev.nighttraders.lumo.launcher.data.LauncherRepository
 import kotlinx.coroutines.CoroutineScope
@@ -31,6 +34,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlin.math.abs
+import kotlin.math.pow
+import kotlin.math.sign
 
 class LumoGestureSidebarService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -136,27 +142,24 @@ class LumoGestureSidebarService : Service() {
         LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(dp(8), dp(18), dp(8), dp(18))
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.RECTANGLE
-                cornerRadius = dp(30).toFloat()
-                setColor(Color.parseColor("#D9160D18"))
-                setStroke(dp(1), Color.parseColor("#33FFFFFF"))
-            }
+            setPadding(dp(8), dp(8), dp(8), dp(8))
+            setBackgroundColor(Color.parseColor("#CC0E0A10"))
 
-            addView(createTextActionButton("Home") {
+            // Ubuntu BFB button at top
+            addView(createBfbButton {
                 hideRail()
                 startActivity(MainActivity.createHomeIntent(this@LumoGestureSidebarService))
             })
-            addView(createTextActionButton("Apps") {
-                hideRail()
-                startActivity(MainActivity.createAppsIntent(this@LumoGestureSidebarService))
-            })
 
+            // Separator
+            addView(createSeparator())
+
+            // Pinned apps
             railApps.forEach { app ->
                 addView(createAppButton(app))
             }
 
+            // Spacer
             addView(Space(this@LumoGestureSidebarService).apply {
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -165,50 +168,114 @@ class LumoGestureSidebarService : Service() {
                 )
             })
 
-            addView(createTextActionButton("Lock", compact = true) {
+            // Separator
+            addView(createSeparator())
+
+            // Apps grid button at bottom
+            addView(createAppsButton {
                 hideRail()
-                startActivity(LockScreenActivity.createIntent(this@LumoGestureSidebarService))
-            })
-            addView(createTextActionButton("System", compact = true) {
-                hideRail()
-                startActivity(SettingsActivity.createIntent(this@LumoGestureSidebarService))
+                startActivity(MainActivity.createAppsIntent(this@LumoGestureSidebarService))
             })
         }
 
-    private fun createTextActionButton(
-        label: String,
-        compact: Boolean = false,
-        onClick: () -> Unit,
-    ): View =
-        TextView(this).apply {
-            text = label
-            gravity = Gravity.CENTER
-            setTextColor(Color.WHITE)
-            textSize = if (compact) 11f else 12f
-            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+    private fun createBfbButton(onClick: () -> Unit): View =
+        FrameLayout(this).apply {
+            val size = dp(52)
+            layoutParams = LinearLayout.LayoutParams(size, size).apply {
+                bottomMargin = dp(2)
+            }
             background = GradientDrawable().apply {
-                shape = GradientDrawable.RECTANGLE
-                cornerRadius = dp(20).toFloat()
+                shape = GradientDrawable.OVAL
                 setColor(Color.parseColor("#E95420"))
             }
-            setPadding(dp(10), dp(9), dp(10), dp(9))
-            layoutParams = LinearLayout.LayoutParams(dp(88), LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                bottomMargin = dp(10)
-            }
             setOnClickListener { onClick() }
+
+            val bfbDrawable = ContextCompat.getDrawable(
+                this@LumoGestureSidebarService,
+                R.drawable.ic_ubuntu_bfb,
+            )
+            addView(
+                ImageView(this@LumoGestureSidebarService).apply {
+                    layoutParams = FrameLayout.LayoutParams(dp(32), dp(32), Gravity.CENTER)
+                    setImageDrawable(bfbDrawable)
+                    setColorFilter(Color.WHITE)
+                },
+            )
+        }
+
+    private fun createAppsButton(onClick: () -> Unit): View =
+        FrameLayout(this).apply {
+            val size = dp(52)
+            layoutParams = LinearLayout.LayoutParams(size, size).apply {
+                topMargin = dp(6)
+            }
+            background = squircleDrawable(Color.parseColor("#55FFFFFF"))
+            setOnClickListener { onClick() }
+
+            addView(
+                ImageView(this@LumoGestureSidebarService).apply {
+                    layoutParams = FrameLayout.LayoutParams(dp(28), dp(28), Gravity.CENTER)
+                    setImageDrawable(
+                        ContextCompat.getDrawable(
+                            this@LumoGestureSidebarService,
+                            android.R.drawable.ic_dialog_dialer,
+                        ),
+                    )
+                    setColorFilter(Color.WHITE)
+                },
+            )
+
+            // Draw a 2x2 grid of dots as the "apps" icon
+            addView(object : View(this@LumoGestureSidebarService) {
+                private val dotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = Color.WHITE
+                    style = Paint.Style.FILL
+                }
+
+                override fun onDraw(canvas: Canvas) {
+                    super.onDraw(canvas)
+                    val cx = width / 2f
+                    val cy = height / 2f
+                    val spacing = dp(7).toFloat()
+                    val radius = dp(3).toFloat()
+                    for (row in -1..1) {
+                        for (col in -1..1) {
+                            canvas.drawCircle(
+                                cx + col * spacing,
+                                cy + row * spacing,
+                                radius,
+                                dotPaint,
+                            )
+                        }
+                    }
+                }
+            }.apply {
+                layoutParams = FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                )
+            })
+
+            // Remove the ic_dialog_dialer - we drew the grid instead
+            removeViewAt(0)
+        }
+
+    private fun createSeparator(): View =
+        View(this).apply {
+            layoutParams = LinearLayout.LayoutParams(dp(36), dp(1)).apply {
+                topMargin = dp(6)
+                bottomMargin = dp(6)
+            }
+            setBackgroundColor(Color.parseColor("#44FFFFFF"))
         }
 
     private fun createAppButton(app: LaunchableApp): View =
         FrameLayout(this).apply {
-            val size = dp(60)
+            val size = dp(52)
             layoutParams = LinearLayout.LayoutParams(size, size).apply {
-                bottomMargin = dp(10)
+                bottomMargin = dp(6)
             }
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(Color.parseColor("#26000000"))
-            }
-            foregroundGravity = Gravity.CENTER
+            background = squircleDrawable(Color.parseColor("#33FFFFFF"))
             setOnClickListener {
                 hideRail()
                 repository.launchApp(app)
@@ -217,8 +284,9 @@ class LumoGestureSidebarService : Service() {
             if (app.icon != null) {
                 addView(
                     ImageView(this@LumoGestureSidebarService).apply {
-                        layoutParams = FrameLayout.LayoutParams(dp(40), dp(40), Gravity.CENTER)
+                        layoutParams = FrameLayout.LayoutParams(dp(44), dp(44), Gravity.CENTER)
                         setImageDrawable(BitmapDrawable(resources, app.icon))
+                        clipToOutline = true
                     },
                 )
             } else {
@@ -232,10 +300,43 @@ class LumoGestureSidebarService : Service() {
                         text = app.label.take(1).uppercase()
                         setTextColor(Color.WHITE)
                         textSize = 18f
-                        typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
                     },
                 )
             }
+        }
+
+    private fun squircleDrawable(fillColor: Int): Drawable =
+        object : Drawable() {
+            private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = fillColor
+                style = Paint.Style.FILL
+            }
+
+            override fun draw(canvas: Canvas) {
+                val w = bounds.width().toFloat()
+                val h = bounds.height().toFloat()
+                val halfW = w / 2f
+                val halfH = h / 2f
+                val n = 4f
+                val path = Path()
+                val steps = 180
+                path.moveTo(w, halfH)
+                for (i in 1..steps) {
+                    val angle = 2.0 * Math.PI * i / steps
+                    val cosA = kotlin.math.cos(angle).toFloat()
+                    val sinA = kotlin.math.sin(angle).toFloat()
+                    val x = halfW + halfW * sign(cosA) * abs(cosA).pow(2f / n)
+                    val y = halfH + halfH * sign(sinA) * abs(sinA).pow(2f / n)
+                    path.lineTo(x, y)
+                }
+                path.close()
+                canvas.drawPath(path, paint)
+            }
+
+            override fun setAlpha(alpha: Int) {}
+            override fun setColorFilter(colorFilter: android.graphics.ColorFilter?) {}
+            @Suppress("DEPRECATION")
+            override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
         }
 
     private fun edgeHandleLayoutParams(): WindowManager.LayoutParams =
@@ -256,12 +357,10 @@ class LumoGestureSidebarService : Service() {
 
     private fun railLayoutParams(): WindowManager.LayoutParams =
         baseLayoutParams(
-            width = WindowManager.LayoutParams.WRAP_CONTENT,
+            width = dp(68),
             height = WindowManager.LayoutParams.MATCH_PARENT,
         ).apply {
             gravity = Gravity.START or Gravity.TOP
-            x = dp(4)
-            y = dp(8)
         }
 
     private fun baseLayoutParams(width: Int, height: Int): WindowManager.LayoutParams =
