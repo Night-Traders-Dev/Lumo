@@ -728,14 +728,6 @@ fun LumoLauncherApp(
             )
         }
 
-        // Loafjet-style swipe hint toast
-        LumoToast(
-            visible = showSwipeHint,
-            message = "Swipe up for Apps",
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = 60.dp),
-        )
     }
 }
 

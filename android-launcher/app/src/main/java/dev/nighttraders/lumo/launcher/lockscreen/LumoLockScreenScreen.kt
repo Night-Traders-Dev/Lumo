@@ -28,7 +28,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -80,7 +79,6 @@ fun LumoLockScreenScreen(
     val today = remember { LocalDate.now() }
     val daysInMonth = remember(today) { today.lengthOfMonth() }
     val currentDay = remember(today) { today.dayOfMonth }
-    val notificationCount = notifications.size
 
     val stepCount by rememberStepCount()
 
@@ -110,7 +108,6 @@ fun LumoLockScreenScreen(
         }
     }
 
-    // Clear error after a delay
     LaunchedEffect(pinError) {
         if (pinError) {
             delay(1500)
@@ -141,10 +138,10 @@ fun LumoLockScreenScreen(
             .background(
                 brush = Brush.verticalGradient(
                     colors = listOf(
-                        Color(0xFF0C0A10),
-                        Color(0xFF1D0A17),
+                        Color(0xFF2C001E), // Ubuntu aubergine
+                        Color(0xFF5E2750), // mid purple
+                        Color(0xFFAA3926), // warm orange-brown
                         Color(0xFF2C001E),
-                        Color(0xFF08060A),
                     ),
                 ),
             )
@@ -166,126 +163,314 @@ fun LumoLockScreenScreen(
                         },
                     )
                 }
-            }
-            .windowInsetsPadding(WindowInsets.systemBars)
-            .padding(horizontal = 18.dp, vertical = 22.dp),
+            },
     ) {
-        // InfoGraphic circle + content centered
+        // Bokeh circles orbiting behind the infographic ring
+        UbuntuBokehBackground(
+            modifier = Modifier.fillMaxSize(),
+        )
+
+        // Main content
         Box(
             modifier = Modifier
-                .align(Alignment.Center)
-                .pointerInput(metrics.size) {
-                    detectTapGestures(
-                        onDoubleTap = {
-                            if (metrics.isNotEmpty()) {
-                                metricIndex = (metricIndex + 1) % metrics.size
-                            }
-                        },
-                    )
-                },
-            contentAlignment = Alignment.Center,
+                .fillMaxSize()
+                .windowInsetsPadding(WindowInsets.systemBars)
+                .padding(horizontal = 18.dp, vertical = 22.dp),
         ) {
-            InfoGraphicRing(
-                daysInMonth = daysInMonth,
-                currentDay = currentDay,
-                hasNotifications = notificationCount > 0,
-                modifier = Modifier.size(280.dp),
-            )
-
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-                modifier = Modifier.padding(horizontal = 28.dp),
+            // InfoGraphic circle + content centered
+            Box(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .pointerInput(metrics.size) {
+                        detectTapGestures(
+                            onDoubleTap = {
+                                if (metrics.isNotEmpty()) {
+                                    metricIndex = (metricIndex + 1) % metrics.size
+                                }
+                            },
+                        )
+                    },
+                contentAlignment = Alignment.Center,
             ) {
-                Text(
-                    text = status.timeLabel,
-                    color = Color.White,
-                    fontSize = 64.sp,
-                    fontWeight = FontWeight.Light,
-                    letterSpacing = (-2).sp,
-                    textAlign = TextAlign.Center,
+                InfoGraphicRing(
+                    daysInMonth = daysInMonth,
+                    currentDay = currentDay,
+                    modifier = Modifier.size(280.dp),
                 )
-                Text(
-                    text = status.dateLabel,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = Color(0xFFE7DFEA),
-                    textAlign = TextAlign.Center,
-                )
-                AnimatedContent(
-                    targetState = currentMetric,
-                    transitionSpec = { fadeIn() togetherWith fadeOut() },
-                    label = "metric",
-                ) { metric ->
+
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier.padding(horizontal = 28.dp),
+                ) {
                     Text(
-                        text = if (metric.truncate && metric.text.length > 32) {
-                            metric.text.take(30) + "\u2026"
-                        } else {
-                            metric.text
-                        },
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = if (metric.highlight) {
-                            Color(0xFFE95420)
-                        } else {
-                            Color(0xFFB8AFBA)
-                        },
+                        text = status.timeLabel,
+                        color = Color.White,
+                        fontSize = 64.sp,
+                        fontWeight = FontWeight.Light,
+                        letterSpacing = (-2).sp,
                         textAlign = TextAlign.Center,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = status.dateLabel,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Color(0xFFE7DFEA),
+                        textAlign = TextAlign.Center,
+                    )
+                    AnimatedContent(
+                        targetState = currentMetric,
+                        transitionSpec = { fadeIn() togetherWith fadeOut() },
+                        label = "metric",
+                    ) { metric ->
+                        Text(
+                            text = if (metric.truncate && metric.text.length > 32) {
+                                metric.text.take(30) + "\u2026"
+                            } else {
+                                metric.text
+                            },
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (metric.highlight) {
+                                Color(0xFFE95420)
+                            } else {
+                                Color(0xFFB8AFBA)
+                            },
+                            textAlign = TextAlign.Center,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
+
+            // Bottom area: PIN pad or swipe hint
+            AnimatedVisibility(
+                visible = showPinEntry,
+                modifier = Modifier.align(Alignment.BottomCenter),
+                enter = fadeIn(animationSpec = tween(200)),
+                exit = fadeOut(animationSpec = tween(150)),
+            ) {
+                PinEntryPanel(
+                    pinInput = pinInput,
+                    pinError = pinError,
+                    securityType = securityType,
+                    onDigit = { digit ->
+                        val maxLen = if (securityType == "pin") 10 else 32
+                        if (!pinError && pinInput.length < maxLen) {
+                            pinInput += digit
+                        }
+                    },
+                    onBackspace = {
+                        if (pinInput.isNotEmpty()) {
+                            pinInput = pinInput.dropLast(1)
+                        }
+                    },
+                    onSubmit = ::submitPin,
+                    onCancel = {
+                        showPinEntry = false
+                        pinInput = ""
+                        pinError = false
+                    },
+                )
+            }
+
+            AnimatedVisibility(
+                visible = !showPinEntry,
+                modifier = Modifier.align(Alignment.BottomCenter),
+                enter = fadeIn(),
+                exit = fadeOut(),
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.padding(bottom = 12.dp),
+                ) {
+                    Text(
+                        text = if (securityType != "none") {
+                            "Swipe up to enter ${securityType.uppercase()}"
+                        } else {
+                            "Swipe up to unlock"
+                        },
+                        style = MaterialTheme.typography.labelLarge,
+                        color = Color(0x99FFFFFF),
                     )
                 }
             }
         }
+    }
+}
 
-        // Bottom area: either PIN pad or "Swipe to unlock"
-        AnimatedVisibility(
-            visible = showPinEntry,
-            modifier = Modifier.align(Alignment.BottomCenter),
-            enter = fadeIn(animationSpec = tween(200)),
-            exit = fadeOut(animationSpec = tween(150)),
-        ) {
-            PinEntryPanel(
-                pinInput = pinInput,
-                pinError = pinError,
-                securityType = securityType,
-                onDigit = { digit ->
-                    val maxLen = if (securityType == "pin") 10 else 32
-                    if (!pinError && pinInput.length < maxLen) {
-                        pinInput += digit
-                    }
-                },
-                onBackspace = {
-                    if (pinInput.isNotEmpty()) {
-                        pinInput = pinInput.dropLast(1)
-                    }
-                },
-                onSubmit = ::submitPin,
-                onCancel = {
-                    showPinEntry = false
-                    pinInput = ""
-                    pinError = false
-                },
+// ── Ubuntu Touch bokeh circles ──────────────────────────────────────────────
+
+/**
+ * Large translucent orange/red circles orbiting around the center of the screen,
+ * matching the Ubuntu Touch lock screen bokeh effect. The circles orbit at the
+ * same radius as the infographic ring but are much larger, creating the
+ * characteristic overlapping bokeh wreath.
+ */
+@Composable
+private fun UbuntuBokehBackground(modifier: Modifier = Modifier) {
+    data class Bokeh(
+        val startDeg: Float,
+        val orbitFraction: Float,  // fraction of min(width,height)/2
+        val radiusFraction: Float, // circle size as fraction of min(width,height)/2
+        val alpha: Float,
+        val durationMs: Int,
+    )
+
+    val bokehs = remember {
+        listOf(
+            // Inner orbit — slightly inside the infographic ring
+            Bokeh(0f, 0.32f, 0.22f, 0.25f, 40_000),
+            Bokeh(72f, 0.30f, 0.20f, 0.22f, 44_000),
+            Bokeh(144f, 0.34f, 0.24f, 0.28f, 38_000),
+            Bokeh(216f, 0.31f, 0.21f, 0.20f, 46_000),
+            Bokeh(288f, 0.33f, 0.23f, 0.26f, 42_000),
+            // Main orbit — overlapping the infographic ring
+            Bokeh(20f, 0.45f, 0.30f, 0.30f, 50_000),
+            Bokeh(65f, 0.48f, 0.34f, 0.28f, 55_000),
+            Bokeh(110f, 0.44f, 0.28f, 0.25f, 48_000),
+            Bokeh(155f, 0.50f, 0.36f, 0.32f, 52_000),
+            Bokeh(200f, 0.46f, 0.32f, 0.27f, 56_000),
+            Bokeh(245f, 0.43f, 0.26f, 0.22f, 54_000),
+            Bokeh(290f, 0.49f, 0.34f, 0.30f, 50_000),
+            Bokeh(335f, 0.47f, 0.30f, 0.26f, 58_000),
+            // Outer orbit — beyond the ring, large and diffuse
+            Bokeh(30f, 0.62f, 0.28f, 0.20f, 65_000),
+            Bokeh(90f, 0.66f, 0.30f, 0.18f, 70_000),
+            Bokeh(150f, 0.60f, 0.26f, 0.16f, 62_000),
+            Bokeh(210f, 0.64f, 0.28f, 0.14f, 68_000),
+            Bokeh(270f, 0.58f, 0.24f, 0.15f, 72_000),
+            Bokeh(330f, 0.63f, 0.27f, 0.17f, 66_000),
+        )
+    }
+
+    val infiniteTransition = rememberInfiniteTransition(label = "bokeh")
+    val angles = bokehs.mapIndexed { i, bokeh ->
+        infiniteTransition.animateFloat(
+            initialValue = bokeh.startDeg,
+            targetValue = bokeh.startDeg + 360f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = bokeh.durationMs, easing = LinearEasing),
+                repeatMode = RepeatMode.Restart,
+            ),
+            label = "bokeh$i",
+        )
+    }
+
+    val colors = remember {
+        listOf(
+            Color(0xFFE95420), // Ubuntu orange
+            Color(0xFFDD4814), // darker orange
+            Color(0xFFCF3721), // red-orange
+            Color(0xFFB83018), // deep red
+            Color(0xFFED764D), // light orange
+        )
+    }
+
+    Canvas(modifier = modifier) {
+        val cx = size.width / 2f
+        val cy = size.height / 2f
+        val halfMin = minOf(size.width, size.height) / 2f
+
+        bokehs.forEachIndexed { i, bokeh ->
+            val angleDeg = angles[i].value
+            val angle = Math.toRadians(angleDeg.toDouble() - 90.0)
+            val orbitR = halfMin * bokeh.orbitFraction
+            val bx = cx + orbitR * cos(angle).toFloat()
+            val by = cy + orbitR * sin(angle).toFloat()
+            val r = halfMin * bokeh.radiusFraction
+
+            val color = colors[i % colors.size]
+
+            // Soft outer glow
+            drawCircle(
+                color = color.copy(alpha = bokeh.alpha * 0.25f),
+                radius = r * 1.5f,
+                center = Offset(bx, by),
             )
-        }
-
-        AnimatedVisibility(
-            visible = !showPinEntry,
-            modifier = Modifier.align(Alignment.BottomCenter),
-            enter = fadeIn(),
-            exit = fadeOut(),
-        ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.padding(bottom = 12.dp),
-            ) {
-                Text(
-                    text = if (securityType != "none") "Swipe up to enter ${securityType.uppercase()}" else "Swipe up to unlock",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = Color(0x99FFFFFF),
-                )
-            }
+            // Main filled circle
+            drawCircle(
+                color = color.copy(alpha = bokeh.alpha),
+                radius = r,
+                center = Offset(bx, by),
+            )
         }
     }
 }
+
+// ── Infographic ring ────────────────────────────────────────────────────────
+
+@Composable
+private fun InfoGraphicRing(
+    daysInMonth: Int,
+    currentDay: Int,
+    modifier: Modifier = Modifier,
+) {
+    val dotColor = Color(0xFFB8AFBA)
+    val activeDotColor = Color(0xFFE95420)
+
+    Canvas(modifier = modifier) {
+        val centerX = size.width / 2f
+        val centerY = size.height / 2f
+        val radius = size.minDimension / 2f - 16f
+
+        // Day-of-month dots around the ring
+        val startAngle = -90.0
+        for (day in 1..daysInMonth) {
+            val angle = Math.toRadians(startAngle + (day - 1) * (360.0 / daysInMonth))
+            val dx = centerX + radius * cos(angle).toFloat()
+            val dy = centerY + radius * sin(angle).toFloat()
+
+            val isCurrentDay = day == currentDay
+            val isPastDay = day < currentDay
+            val circleRadius = when {
+                isCurrentDay -> 7f
+                isPastDay -> 5f
+                else -> 4f
+            }
+            val color = when {
+                isCurrentDay -> activeDotColor
+                isPastDay -> dotColor.copy(alpha = 0.7f)
+                else -> dotColor.copy(alpha = 0.3f)
+            }
+            val strokeWidth = when {
+                isCurrentDay -> 2.5f
+                isPastDay -> 1.8f
+                else -> 1.2f
+            }
+
+            drawCircle(
+                color = color,
+                radius = circleRadius,
+                center = Offset(dx, dy),
+                style = Stroke(width = strokeWidth),
+            )
+
+            if (isCurrentDay) {
+                drawCircle(
+                    color = activeDotColor,
+                    radius = 3f,
+                    center = Offset(dx, dy),
+                )
+            }
+        }
+
+        // Progress arc showing elapsed days
+        if (currentDay > 1) {
+            val sweepAngle = ((currentDay - 1).toFloat() / daysInMonth) * 360f
+            drawArc(
+                color = activeDotColor.copy(alpha = 0.25f),
+                startAngle = -90f,
+                sweepAngle = sweepAngle,
+                useCenter = false,
+                style = Stroke(width = 2.5f, cap = StrokeCap.Round),
+                topLeft = Offset(centerX - radius, centerY - radius),
+                size = androidx.compose.ui.geometry.Size(radius * 2, radius * 2),
+            )
+        }
+    }
+}
+
+// ── PIN entry ───────────────────────────────────────────────────────────────
 
 @Composable
 private fun PinEntryPanel(
@@ -341,7 +526,7 @@ private fun PinEntryPanel(
                 }
             }
 
-            // Number pad (3x4 grid + bottom row)
+            // Number pad
             val rows = listOf(
                 listOf("1", "2", "3"),
                 listOf("4", "5", "6"),
@@ -358,17 +543,16 @@ private fun PinEntryPanel(
                 }
                 Spacer(modifier = Modifier.height(8.dp))
             }
-            // Bottom row: Cancel, 0, Backspace/Enter
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly,
             ) {
-                PinKey(label = "\u2716", small = true, onClick = onCancel) // X cancel
+                PinKey(label = "\u2716", small = true, onClick = onCancel)
                 PinKey(label = "0", onClick = { onDigit("0") })
                 if (pinInput.isNotEmpty()) {
-                    PinKey(label = "\u2714", small = true, accent = true, onClick = onSubmit) // checkmark
+                    PinKey(label = "\u2714", small = true, accent = true, onClick = onSubmit)
                 } else {
-                    PinKey(label = "\u232B", small = true, onClick = onBackspace) // backspace
+                    PinKey(label = "\u232B", small = true, onClick = onBackspace)
                 }
             }
         }
@@ -397,144 +581,6 @@ private fun PinKey(
                 fontWeight = FontWeight.Light,
                 color = Color.White,
                 textAlign = TextAlign.Center,
-            )
-        }
-    }
-}
-
-@Composable
-private fun InfoGraphicRing(
-    daysInMonth: Int,
-    currentDay: Int,
-    hasNotifications: Boolean,
-    modifier: Modifier = Modifier,
-) {
-    val dotColor = Color(0xFFB8AFBA)
-    val activeDotColor = Color(0xFFE95420)
-
-    // Orbiting circles — each has its own speed, offset, orbit distance, and base size.
-    // Sizes vary sinusoidally as they rotate to create a 3D perspective effect:
-    // circles appear larger at the bottom (closer) and smaller at the top (farther).
-    data class OrbiterSpec(
-        val startDeg: Float,
-        val durationMs: Int,
-        val orbitOffset: Float, // added to base orbit radius
-        val baseRadius: Float,
-        val sizeVariation: Float, // multiplier range: size oscillates between base*(1-var) and base*(1+var)
-        val color: Color,
-    )
-
-    val orbiters = remember(activeDotColor, dotColor) {
-        listOf(
-            // Large prominent orbiters matching Ubuntu Touch scale
-            OrbiterSpec(0f, 18_000, 20f, 14f, 0.5f, activeDotColor.copy(alpha = 0.8f)),
-            OrbiterSpec(72f, 25_000, 26f, 10f, 0.45f, dotColor.copy(alpha = 0.55f)),
-            OrbiterSpec(144f, 32_000, 18f, 8f, 0.6f, activeDotColor.copy(alpha = 0.5f)),
-            OrbiterSpec(216f, 22_000, 30f, 16f, 0.5f, activeDotColor.copy(alpha = 0.6f)),
-            OrbiterSpec(288f, 30_000, 22f, 6f, 0.55f, dotColor.copy(alpha = 0.4f)),
-            OrbiterSpec(36f, 38_000, 34f, 12f, 0.45f, activeDotColor.copy(alpha = 0.35f)),
-        )
-    }
-
-    val infiniteTransition = rememberInfiniteTransition(label = "orbit")
-    val orbitAngles = orbiters.mapIndexed { i, spec ->
-        infiniteTransition.animateFloat(
-            initialValue = spec.startDeg,
-            targetValue = spec.startDeg + 360f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(durationMillis = spec.durationMs, easing = LinearEasing),
-                repeatMode = RepeatMode.Restart,
-            ),
-            label = "orbit$i",
-        )
-    }
-
-    Canvas(modifier = modifier) {
-        val centerX = size.width / 2f
-        val centerY = size.height / 2f
-        val radius = size.minDimension / 2f - 16f
-
-        val startAngle = -90.0
-        for (day in 1..daysInMonth) {
-            val angle = Math.toRadians(startAngle + (day - 1) * (360.0 / daysInMonth))
-            val dx = centerX + radius * cos(angle).toFloat()
-            val dy = centerY + radius * sin(angle).toFloat()
-
-            val isCurrentDay = day == currentDay
-            val isPastDay = day < currentDay
-            val circleRadius = when {
-                isCurrentDay -> 7f
-                isPastDay -> 5f
-                else -> 4f
-            }
-            val color = when {
-                isCurrentDay -> activeDotColor
-                isPastDay -> dotColor.copy(alpha = 0.7f)
-                else -> dotColor.copy(alpha = 0.3f)
-            }
-            val strokeWidth = when {
-                isCurrentDay -> 2.5f
-                isPastDay -> 1.8f
-                else -> 1.2f
-            }
-
-            drawCircle(
-                color = color,
-                radius = circleRadius,
-                center = Offset(dx, dy),
-                style = Stroke(width = strokeWidth),
-            )
-
-            if (isCurrentDay) {
-                drawCircle(
-                    color = activeDotColor,
-                    radius = 3f,
-                    center = Offset(dx, dy),
-                )
-            }
-        }
-
-        if (currentDay > 1) {
-            val sweepAngle = ((currentDay - 1).toFloat() / daysInMonth) * 360f
-            drawArc(
-                color = activeDotColor.copy(alpha = 0.25f),
-                startAngle = -90f,
-                sweepAngle = sweepAngle,
-                useCenter = false,
-                style = Stroke(width = 2.5f, cap = StrokeCap.Round),
-                topLeft = Offset(centerX - radius, centerY - radius),
-                size = androidx.compose.ui.geometry.Size(radius * 2, radius * 2),
-            )
-        }
-
-        // Draw orbiting circles with 3D perspective size variation
-        orbiters.forEachIndexed { i, spec ->
-            val angleDeg = orbitAngles[i].value
-            val angle = Math.toRadians(angleDeg.toDouble() - 90.0)
-            val orbitR = radius + spec.orbitOffset
-            val ox = centerX + orbitR * cos(angle).toFloat()
-            val oy = centerY + orbitR * sin(angle).toFloat()
-
-            // Size oscillates with position: larger at bottom (sin=1), smaller at top (sin=-1)
-            val perspectiveFactor = sin(angle).toFloat() // -1 at top, +1 at bottom
-            val sizeMult = 1f + spec.sizeVariation * perspectiveFactor
-            val dotRadius = spec.baseRadius * sizeMult
-
-            // Alpha also varies slightly — closer = more opaque
-            val alphaBoost = 1f + 0.3f * perspectiveFactor
-            val drawColor = spec.color.copy(alpha = (spec.color.alpha * alphaBoost).coerceIn(0f, 1f))
-
-            // Glow
-            drawCircle(
-                color = drawColor.copy(alpha = drawColor.alpha * 0.25f),
-                radius = dotRadius * 2.5f,
-                center = Offset(ox, oy),
-            )
-            // Core
-            drawCircle(
-                color = drawColor,
-                radius = dotRadius,
-                center = Offset(ox, oy),
             )
         }
     }
