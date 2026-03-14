@@ -104,8 +104,8 @@ class MainActivity : ComponentActivity() {
                     requestedPageIndex = requestedPageIndex.intValue,
                     navigationRequestId = navigationRequestId.intValue,
                     settings = launcherSettings,
-                    isDashLocked = isDashLocked && lockScreenSecurityType.value != "none" && lockScreenSecurityType.value != "loading",
-                    lockScreenSecurityType = if (lockScreenSecurityType.value == "loading") "none" else lockScreenSecurityType.value,
+                    isDashLocked = isDashLocked && lockScreenSecurityType.value != "none",
+                    lockScreenSecurityType = lockScreenSecurityType.value,
                     onVerifyPin = { input ->
                         if (lockScreenSecurityType.value == "loading") return@LumoLauncherApp false
                         val sanitized = LockScreenActivity.sanitizeInput(input)
@@ -186,6 +186,17 @@ class MainActivity : ComponentActivity() {
                     onToggleFavorite = viewModel::toggleFavorite,
                     onAddFavorite = viewModel::addFavorite,
                     onReorderFavorites = viewModel::reorderFavorites,
+                    onResumeApp = { app ->
+                        val result = viewModel.resumeOrLaunchApp(app)
+                        if (result.isFailure) {
+                            Toast.makeText(
+                                this,
+                                getString(R.string.launch_failed_message),
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                        }
+                    },
+                    onDismissTask = { app -> viewModel.removeTask(app) },
                     onOpenAppInfo = { app ->
                         val result = viewModel.openAppInfo(app)
                         if (result.isFailure) {

@@ -35,6 +35,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     private val favoriteKeys = repository.observeFavoriteKeys()
     private val orderedFavoriteKeys = repository.observeOrderedFavoriteKeys()
     private val recentAppKeys = repository.recentAppKeysFlow
+    private val recentTasks = repository.recentTasksFlow
     private val defaultHome = MutableStateFlow(false)
     private val notificationAccess = MutableStateFlow(application.hasNotificationListenerAccess())
     private val notifications = LauncherNotificationCenter.notifications
@@ -58,6 +59,8 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         state.copy(hasNotificationAccess = hasAccess)
     }.combine(recentAppKeys) { state, recentKeys ->
         state.copy(recentAppKeys = recentKeys)
+    }.combine(recentTasks) { state, tasks ->
+        state.copy(recentTaskApps = tasks)
     }.combine(orderedFavoriteKeys) { state, ordered ->
         state.copy(orderedFavoriteKeys = ordered)
     }.stateIn(
@@ -208,6 +211,25 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         LumoNotificationListenerService.requestRefresh()
     }
 
+    /**
+     * Resume an existing task (move to foreground) instead of relaunching.
+     * Falls back to launching the app if the task can't be resumed.
+     */
+    fun resumeOrLaunchApp(app: LaunchableApp): Result<Unit> {
+        if (app.taskId >= 0) {
+            val result = repository.resumeTask(app.taskId)
+            if (result.isSuccess) return result
+        }
+        return launchApp(app)
+    }
+
+    /**
+     * Remove a task from Android's recents.
+     */
+    fun removeTask(app: LaunchableApp) {
+        repository.removeTask(app.taskId)
+    }
+
     fun refreshRecentApps() {
         viewModelScope.launch(Dispatchers.IO) {
             repository.refreshRecentApps()
@@ -230,7 +252,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     }
 
     companion object {
-        private const val RECENT_APPS_REFRESH_MS = 15_000L // 15s backstop — events handle most updates
+        private const val RECENT_APPS_REFRESH_MS = 30_000L // 30s backstop — task list updates on spread open
 
         val Factory: ViewModelProvider.Factory = viewModelFactory {
             initializer {

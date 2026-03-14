@@ -20,6 +20,7 @@ data class LaunchableApp(
     val icon: Bitmap?,
     val accentSeed: Int,
     val category: AppCategory,
+    val taskId: Int = -1,
 )
 
 fun inferAppCategory(packageName: String, label: String): AppCategory {

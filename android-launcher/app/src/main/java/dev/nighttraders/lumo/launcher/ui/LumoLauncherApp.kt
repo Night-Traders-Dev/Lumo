@@ -166,6 +166,8 @@ fun LumoLauncherApp(
     onToggleFavorite: (LaunchableApp) -> Unit,
     onAddFavorite: (String) -> Unit = {},
     onReorderFavorites: (List<String>) -> Unit = {},
+    onResumeApp: (LaunchableApp) -> Unit = {},
+    onDismissTask: (LaunchableApp) -> Unit = {},
     onOpenAppInfo: (LaunchableApp) -> Unit,
     onRequestUninstall: (LaunchableApp) -> Unit,
     onRefresh: () -> Unit,
@@ -822,18 +824,18 @@ fun LumoLauncherApp(
         // Multitask / recent apps overlay (Ubuntu Touch style)
         if (showMultitask) {
             LaunchedEffect(Unit) {
-                LumoDebugLog.d("Multitask", "Showing spread — ${uiState.recentApps.size} recent, ${uiState.apps.size} total")
+                LumoDebugLog.d("Multitask", "Showing spread — ${uiState.recentTaskApps.size} tasks")
             }
             MultitaskOverlay(
-                recentApps = uiState.recentApps,
-                allApps = uiState.apps,
-                onLaunchApp = { app ->
-                    LumoDebugLog.i("Multitask", "Launching ${app.label} from spread")
+                recentApps = uiState.recentTaskApps,
+                onResumeApp = { app ->
                     currentScreen = LauncherScreen.HOME
-                    onLaunchApp(app)
+                    onResumeApp(app)
+                },
+                onDismissTask = { app ->
+                    onDismissTask(app)
                 },
                 onDismiss = {
-                    LumoDebugLog.d("Multitask", "Dismissed spread -> HOME")
                     currentScreen = LauncherScreen.HOME
                 },
             )
@@ -889,16 +891,12 @@ private fun LumoToast(
 @Composable
 private fun MultitaskOverlay(
     recentApps: List<LaunchableApp>,
-    allApps: List<LaunchableApp>,
-    onLaunchApp: (LaunchableApp) -> Unit,
+    onResumeApp: (LaunchableApp) -> Unit,
+    onDismissTask: (LaunchableApp) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val appsToShow = remember(recentApps, allApps) {
-        recentApps.ifEmpty { allApps.take(6) }.take(8)
-    }
-    var dismissedKeys by remember { mutableStateOf(emptySet<String>()) }
-    val visibleApps = remember(appsToShow, dismissedKeys) {
-        appsToShow.filterNot { it.componentKey in dismissedKeys }
+    val visibleApps = remember(recentApps) {
+        recentApps.take(12)
     }
 
     Box(
@@ -960,10 +958,8 @@ private fun MultitaskOverlay(
                             total = visibleApps.size,
                             modifier = Modifier
                                 .padding(start = 16.dp + stepDp * index),
-                            onClick = { onLaunchApp(app) },
-                            onClose = {
-                                dismissedKeys = dismissedKeys + app.componentKey
-                            },
+                            onClick = { onResumeApp(app) },
+                            onClose = { onDismissTask(app) },
                         )
                     }
                 }
@@ -974,7 +970,7 @@ private fun MultitaskOverlay(
         SpreadBottomDock(
             apps = visibleApps,
             modifier = Modifier.align(Alignment.BottomCenter),
-            onLaunchApp = onLaunchApp,
+            onLaunchApp = onResumeApp,
             onHideApps = onDismiss,
         )
     }

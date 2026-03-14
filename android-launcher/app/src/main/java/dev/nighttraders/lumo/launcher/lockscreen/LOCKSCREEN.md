@@ -20,17 +20,24 @@ Custom lock screen with Ubuntu Touch-style infographic ring, bokeh circles, PIN/
 - Swipe-up to unlock (when no security set)
 - PIN entry panel slides up from bottom with numeric keypad and visual PIN dots
 - 3-second grace period: if screen turns back on within 3 seconds, lock is cancelled
-- Security state starts as "loading" to prevent bypass during async DataStore load
-- Status bar blocked when locked (overlay + FLAG_FULLSCREEN + BEHAVIOR_DEFAULT)
+- Security state starts as "loading" — unlock is blocked until credentials finish loading (no "loading" → "none" mapping)
+- Brute-force protection: exponential backoff after 3 failed attempts (5s, 15s, 30s, 60s... up to 10 min)
+- Empty/missing credential hash rejects all input (no bypass on corrupted state)
 - Gesture sidebar blocked when locked (checks `LumoLockState.isLocked`)
+- Credential storage excluded from Android backup
 - Companion service uses `createWakeIntent()` with `EXTRA_TURN_SCREEN_ON` to conditionally wake screen
 - Security credentials persist across app updates (stored in DataStore)
+
+## Security Model
+
+This lock screen is a **UX layer**, not a security boundary. It provides a personalized first screen experience over the system keyguard. Real device security (PIN/biometric/pattern) is handled by Android's built-in keyguard underneath.
+
+The status bar and app switcher **cannot be blocked** by third-party apps on consumer Android devices (Android 12+). Only dedicated-device LockTask mode (requiring device owner privileges) can do this. This is an intentional Android platform limitation.
 
 ## Known Issues / Bugs
 
 - Companion service requires `USE_FULL_SCREEN_INTENT` permission which may not be granted on all devices
 - Companion service only works on Android 13 and earlier (`isWakeCompanionSupported()` returns false on 14+)
-- Device owner lock task mode (full nav button blocking) requires `dpm set-device-owner` which is blocked on devices with multiple user profiles (e.g., Samsung Knox Secure Folder)
 
 ## Plans
 

@@ -15,6 +15,7 @@ data class LauncherUiState(
     val favoriteKeys: Set<String> = emptySet(),
     val orderedFavoriteKeys: List<String> = emptyList(),
     val recentAppKeys: List<String> = emptyList(),
+    val recentTaskApps: List<LaunchableApp> = emptyList(),
     val notifications: List<LauncherNotification> = emptyList(),
     val headsUpNotification: LauncherNotification? = null,
     val hasNotificationAccess: Boolean = false,

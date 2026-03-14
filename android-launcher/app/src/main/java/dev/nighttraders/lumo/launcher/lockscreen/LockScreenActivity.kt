@@ -50,7 +50,7 @@ class LockScreenActivity : ComponentActivity() {
                 LumoLockScreenScreen(
                     status = status,
                     notifications = notifications,
-                    securityType = if (securityType == "loading") "none" else securityType,
+                    securityType = securityType,
                     onUnlock = ::attemptUnlock,
                     onVerifyPin = ::verifyPin,
                 )
@@ -79,8 +79,8 @@ class LockScreenActivity : ComponentActivity() {
     }
 
     private fun verifyPin(input: String): Boolean {
-        if (securityType == "loading") return false // Still loading — don't allow bypass
-        if (securityHash.isEmpty()) return true
+        if (securityType == "loading") return false
+        if (securityHash.isEmpty()) return false // Missing hash = broken state, reject all
         val sanitized = sanitizeInput(input)
         if (sanitized.isEmpty()) return false
         return hashWithSalt(sanitized, securitySalt) == securityHash

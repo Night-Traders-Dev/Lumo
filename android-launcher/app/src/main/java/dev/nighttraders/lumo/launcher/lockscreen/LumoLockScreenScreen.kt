@@ -99,6 +99,30 @@ fun LumoLockScreenScreen(
     var showPinEntry by rememberSaveable { mutableStateOf(false) }
     var pinInput by rememberSaveable { mutableStateOf("") }
     var pinError by rememberSaveable { mutableStateOf(false) }
+    var failedAttempts by rememberSaveable { mutableIntStateOf(0) }
+    var lockedUntil by rememberSaveable { mutableStateOf(0L) }
+    var cooldownSecondsLeft by rememberSaveable { mutableIntStateOf(0) }
+
+    // Exponential backoff: 0, 0, 0, 5s, 15s, 30s, 60s, 120s...
+    fun cooldownForAttempt(attempts: Int): Long = when {
+        attempts < 3 -> 0L
+        attempts == 3 -> 5_000L
+        attempts == 4 -> 15_000L
+        attempts == 5 -> 30_000L
+        else -> (60_000L * (1L shl (attempts - 6).coerceAtMost(4)))
+            .coerceAtMost(600_000L) // cap at 10 minutes
+    }
+
+    // Countdown timer for lockout display
+    LaunchedEffect(lockedUntil) {
+        if (lockedUntil <= 0L) { cooldownSecondsLeft = 0; return@LaunchedEffect }
+        while (true) {
+            val remaining = lockedUntil - System.currentTimeMillis()
+            if (remaining <= 0L) { cooldownSecondsLeft = 0; break }
+            cooldownSecondsLeft = ((remaining + 999) / 1000).toInt()
+            delay(1000)
+        }
+    }
 
     LaunchedEffect(metrics.size) {
         if (metrics.size <= 1) return@LaunchedEffect
@@ -117,6 +141,7 @@ fun LumoLockScreenScreen(
     }
 
     fun attemptUnlock() {
+        if (securityType == "loading") return
         if (securityType == "none") {
             onUnlock()
         } else {
@@ -125,9 +150,17 @@ fun LumoLockScreenScreen(
     }
 
     fun submitPin() {
+        if (System.currentTimeMillis() < lockedUntil) return // Still in cooldown
         if (onVerifyPin(pinInput)) {
+            failedAttempts = 0
+            lockedUntil = 0L
             onUnlock()
         } else {
+            failedAttempts++
+            val cooldown = cooldownForAttempt(failedAttempts)
+            if (cooldown > 0L) {
+                lockedUntil = System.currentTimeMillis() + cooldown
+            }
             pinError = true
         }
     }
@@ -253,9 +286,10 @@ fun LumoLockScreenScreen(
                     pinInput = pinInput,
                     pinError = pinError,
                     securityType = securityType,
+                    cooldownSecondsLeft = cooldownSecondsLeft,
                     onDigit = { digit ->
                         val maxLen = if (securityType == "pin") 10 else 32
-                        if (!pinError && pinInput.length < maxLen) {
+                        if (!pinError && cooldownSecondsLeft <= 0 && pinInput.length < maxLen) {
                             pinInput += digit
                         }
                     },
@@ -284,10 +318,10 @@ fun LumoLockScreenScreen(
                     modifier = Modifier.padding(bottom = 12.dp),
                 ) {
                     Text(
-                        text = if (securityType != "none") {
-                            "Swipe up to enter ${securityType.uppercase()}"
-                        } else {
-                            "Swipe up to unlock"
+                        text = when (securityType) {
+                            "loading" -> "Loading\u2026"
+                            "none" -> "Swipe up to unlock"
+                            else -> "Swipe up to enter ${securityType.uppercase()}"
                         },
                         style = MaterialTheme.typography.labelLarge,
                         color = Color(0x99FFFFFF),
@@ -477,6 +511,7 @@ private fun PinEntryPanel(
     pinInput: String,
     pinError: Boolean,
     securityType: String,
+    cooldownSecondsLeft: Int = 0,
     onDigit: (String) -> Unit,
     onBackspace: () -> Unit,
     onSubmit: () -> Unit,
@@ -493,9 +528,17 @@ private fun PinEntryPanel(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(
-                text = if (pinError) "Wrong ${securityType}" else "Enter ${securityType}",
+                text = when {
+                    cooldownSecondsLeft > 0 -> "Try again in ${cooldownSecondsLeft}s"
+                    pinError -> "Wrong ${securityType}"
+                    else -> "Enter ${securityType}"
+                },
                 style = MaterialTheme.typography.titleMedium,
-                color = if (pinError) Color(0xFFED3146) else Color.White,
+                color = when {
+                    cooldownSecondsLeft > 0 -> Color(0xFFED3146)
+                    pinError -> Color(0xFFED3146)
+                    else -> Color.White
+                },
             )
 
             Spacer(modifier = Modifier.height(12.dp))

@@ -225,7 +225,7 @@ class SettingsActivity : ComponentActivity() {
     }
 
     private fun verifyCurrentSecurity(input: String): Boolean {
-        if (lockScreenSecurityHash.isEmpty()) return true
+        if (lockScreenSecurityHash.isEmpty()) return false // Missing hash = broken state, reject all
         val sanitized = LockScreenActivity.sanitizeInput(input)
         if (sanitized.isEmpty()) return false
         return LockScreenActivity.hashWithSalt(sanitized, lockScreenSecuritySalt) == lockScreenSecurityHash

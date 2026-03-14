@@ -2,7 +2,6 @@ package dev.nighttraders.lumo.launcher.data
 
 import android.app.ActivityManager
 import android.app.AppOpsManager
-import android.app.usage.UsageEvents
 import android.app.usage.UsageStatsManager
 import android.content.ComponentName
 import android.content.Context
@@ -13,7 +12,6 @@ import android.net.Uri
 import android.os.Build
 import android.os.Process
 import android.provider.Settings
-import dev.nighttraders.lumo.launcher.data.LumoDebugLog
 import androidx.core.graphics.drawable.toBitmap
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.preferencesDataStore
@@ -32,7 +30,6 @@ private const val ICON_SIZE_DP = 56
 private const val MAX_RECENT_APPS = 12
 private const val RECENT_SEPARATOR = "|"
 private const val FAVORITE_SEPARATOR = "|"
-private const val RECENT_WINDOW_MS = 2L * 60 * 60 * 1000 // 2 hours — keeps recents fresh
 
 private val Context.launcherPreferences by preferencesDataStore(name = "lumo_launcher")
 
@@ -45,6 +42,10 @@ class LauncherRepository(private val context: Context) {
     /** Reactive recent app keys — updated by periodic polling or manual recording. */
     private val _recentAppKeys = MutableStateFlow(loadSavedRecentKeys())
     val recentAppKeysFlow: StateFlow<List<String>> = _recentAppKeys.asStateFlow()
+
+    /** Per-task recent apps with task IDs for proper resume/dismiss. */
+    private val _recentTasks = MutableStateFlow<List<LaunchableApp>>(emptyList())
+    val recentTasksFlow: StateFlow<List<LaunchableApp>> = _recentTasks.asStateFlow()
 
     /** Seed recent keys from DataStore synchronously so there's no empty-list gap at startup. */
     private fun loadSavedRecentKeys(): List<String> = runBlocking {
@@ -300,108 +301,82 @@ class LauncherRepository(private val context: Context) {
     }
 
     /**
-     * Query the system for actual recent app usage.
+     * Query the system for actual recent tasks (per-task, not per-package).
      *
-     * Strategy: get the set of packages that still have tasks in the Android recents
-     * (via ActivityManager.getAppTasks / getRecentTasks), then use UsageStats to order
-     * them by most-recently-used.  This ensures only apps in the real recents appear.
+     * Uses getRecentTasks() which returns per-task entries. For ordering,
+     * the task list from ActivityManager is already ordered by recency.
+     * UsageStats is used as a secondary signal when available.
      */
-    suspend fun loadRecentAppsFromSystem(): List<String> = withContext(Dispatchers.IO) {
-        // 1. Get the set of packages currently in the system recents
-        val recentsPackages = getRecentsPackages()
+    suspend fun loadRecentTasks(): List<LaunchableApp> = withContext(Dispatchers.IO) {
+        val density = context.resources.displayMetrics.density
+        val iconSizePx = (ICON_SIZE_DP * density).toInt()
 
-        LumoDebugLog.d("Recents", "System recents: ${recentsPackages.size} tasks — $recentsPackages")
-        LumoDebugLog.d("Recents", "UsageStats permission=${hasUsageStatsPermission()}, manager=${usageStatsManager != null}")
-
-        // 2. If we have usage stats permission, use it to order the recents by freshness
-        if (hasUsageStatsPermission() && usageStatsManager != null) {
-            val endTime = System.currentTimeMillis()
-            val startTime = endTime - RECENT_WINDOW_MS
-
-            val recentPackages = LinkedHashMap<String, Long>()
-            val events = runCatching {
-                usageStatsManager.queryEvents(startTime, endTime)
-            }.getOrNull()
-
-            if (events != null) {
-                val event = UsageEvents.Event()
-                while (events.hasNextEvent()) {
-                    events.getNextEvent(event)
-                    if (event.eventType == UsageEvents.Event.ACTIVITY_RESUMED) {
-                        val pkg = event.packageName ?: continue
-                        if (pkg == context.packageName) continue
-                        // Only include if it's in the actual system recents
-                        if (recentsPackages.isEmpty() || pkg in recentsPackages) {
-                            recentPackages[pkg] = event.timeStamp
-                        }
-                    }
-                }
-            }
-
-            val sortedPackages = recentPackages.entries
-                .sortedByDescending { it.value }
-                .map { it.key }
-                .take(MAX_RECENT_APPS)
-
-            val componentKeys = sortedPackages.mapNotNull { pkg ->
-                launcherApps?.getActivityList(pkg, Process.myUserHandle())
-                    ?.firstOrNull()
-                    ?.componentName
-                    ?.flattenToShortString()
-            }
-
-            LumoDebugLog.d("Recents", "UsageStats+recents result: ${componentKeys.size} apps — ${componentKeys.map { it.substringBefore('/') }}")
-            _recentAppKeys.value = componentKeys
-            return@withContext componentKeys
-        }
-
-        // 3. No usage stats — use recents packages directly (unordered)
-        if (recentsPackages.isNotEmpty()) {
-            val componentKeys = recentsPackages.take(MAX_RECENT_APPS).mapNotNull { pkg ->
-                launcherApps?.getActivityList(pkg, Process.myUserHandle())
-                    ?.firstOrNull()
-                    ?.componentName
-                    ?.flattenToShortString()
-            }
-            _recentAppKeys.value = componentKeys
-            return@withContext componentKeys
-        }
-
-        // 4. Final fallback — DataStore
-        return@withContext observeRecentAppKeys().first()
-    }
-
-    /**
-     * Returns the set of package names that currently have tasks in the Android recents.
-     */
-    private fun getRecentsPackages(): Set<String> {
-        val packages = mutableSetOf<String>()
-
-        // getAppTasks() returns tasks belonging to the calling app — not useful here.
-        // getRecentTasks() is deprecated but still returns results for the launcher (home) app.
         @Suppress("DEPRECATION")
         val recentTasks = runCatching {
-            activityManager?.getRecentTasks(20, ActivityManager.RECENT_WITH_EXCLUDED)
-        }.getOrNull()
+            activityManager?.getRecentTasks(MAX_RECENT_APPS, ActivityManager.RECENT_WITH_EXCLUDED)
+        }.getOrNull().orEmpty()
 
-        recentTasks?.forEach { task ->
-            val pkg = task.baseIntent?.component?.packageName
-                ?: task.baseIntent?.`package`
-            if (pkg != null && pkg != context.packageName) {
-                packages.add(pkg)
-            }
+        val taskApps = recentTasks.mapNotNull { task ->
+            val component = task.baseIntent?.component ?: return@mapNotNull null
+            val pkg = component.packageName
+            if (pkg == context.packageName) return@mapNotNull null
+
+            val info = launcherApps?.getActivityList(pkg, Process.myUserHandle())
+                ?.firstOrNull()
+                ?: return@mapNotNull null
+
+            LaunchableApp(
+                componentKey = info.componentName.flattenToShortString(),
+                packageName = info.componentName.packageName,
+                className = info.componentName.className,
+                label = info.label?.toString().orEmpty(),
+                icon = info.getBadgedIcon(context.resources.displayMetrics.densityDpi)
+                    ?.toBitmap(width = iconSizePx, height = iconSizePx),
+                accentSeed = info.componentName.packageName.hashCode(),
+                category = inferAppCategory(
+                    packageName = info.componentName.packageName,
+                    label = info.label?.toString().orEmpty(),
+                ),
+                taskId = @Suppress("DEPRECATION") task.id,
+            )
         }
 
-        return packages
+        // Update the legacy key flow for any consumers still using it
+        _recentAppKeys.value = taskApps.map { it.componentKey }
+        // Update the task-level flow
+        _recentTasks.value = taskApps
+        return@withContext taskApps
     }
 
     /**
-     * Refresh recent apps — uses system stats if available, falls back to DataStore.
-     * Updates the reactive StateFlow.
+     * Refresh recent tasks from the system. Updates both reactive flows.
      */
     suspend fun refreshRecentApps() {
-        val keys = loadRecentAppsFromSystem()
-        _recentAppKeys.value = keys
+        loadRecentTasks()
+    }
+
+    /**
+     * Resume an existing task by moving it to the foreground.
+     * Returns success if the task was moved, failure if it needs to be launched fresh.
+     */
+    fun resumeTask(taskId: Int): Result<Unit> {
+        if (taskId < 0) return Result.failure(IllegalArgumentException("No task ID"))
+        return runCatching {
+            activityManager?.moveTaskToFront(taskId, ActivityManager.MOVE_TASK_WITH_HOME)
+                ?: throw IllegalStateException("No ActivityManager")
+        }
+    }
+
+    /**
+     * Remove a task from the local recents list.
+     * Android does not expose a public API for third-party launchers to remove
+     * other apps' tasks from the system recents, so we only hide it locally.
+     * The system recents will update on the next refresh cycle.
+     */
+    fun removeTask(taskId: Int) {
+        if (taskId < 0) return
+        _recentTasks.value = _recentTasks.value.filter { it.taskId != taskId }
+        _recentAppKeys.value = _recentTasks.value.map { it.componentKey }
     }
 
     fun launchApp(app: LaunchableApp): Result<Unit> {
