@@ -26,6 +26,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Apps
 import androidx.compose.material.icons.rounded.Gesture
 import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Keyboard
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Notifications
@@ -112,7 +113,9 @@ fun LumoSettingsScreen(
     onOpenWifiSettings: () -> Unit,
     onOpenDisplaySettings: () -> Unit,
     onOpenWallpaperSettings: () -> Unit,
+    hasUsageStatsPermission: Boolean = false,
     onOpenAccessibilitySettings: () -> Unit = {},
+    onOpenUsageAccessSettings: () -> Unit = {},
     onUpdateIntSetting: (String, Int) -> Unit = { _, _ -> },
     onUpdateBoolSetting: (String, Boolean) -> Unit = { _, _ -> },
     onRefresh: () -> Unit,
@@ -335,6 +338,33 @@ fun LumoSettingsScreen(
             GestureSensitivitySection(
                 settings = settings,
                 onUpdate = onUpdateIntSetting,
+            )
+        }
+
+        // ── Permissions ─────────────────────────────────────────────────
+        item {
+            SettingSection(
+                title = "Permissions",
+                subtitle = "Grant permissions for full launcher functionality.",
+                actions = buildList {
+                    if (!hasUsageStatsPermission) {
+                        add(
+                            SettingAction(
+                                icon = Icons.Rounded.Info,
+                                label = "Grant usage access (for recent apps tracking)",
+                                onClick = onOpenUsageAccessSettings,
+                            ),
+                        )
+                    } else {
+                        add(
+                            SettingAction(
+                                icon = Icons.Rounded.Info,
+                                label = "Usage access granted",
+                                onClick = {},
+                            ),
+                        )
+                    }
+                },
             )
         }
 

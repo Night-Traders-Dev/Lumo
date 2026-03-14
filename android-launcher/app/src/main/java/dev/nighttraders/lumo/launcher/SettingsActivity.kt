@@ -1,11 +1,13 @@
 package dev.nighttraders.lumo.launcher
 
+import android.app.AppOpsManager
 import android.app.role.RoleManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Process
 import android.provider.Settings
 import android.view.inputmethod.InputMethodManager
 import android.widget.Toast
@@ -48,6 +50,7 @@ class SettingsActivity : ComponentActivity() {
     private val supportsLockScreenCompanion = mutableStateOf(LumoLockScreenCompanionService.isWakeCompanionSupported())
     private val isLockScreenCompanionEnabled = mutableStateOf(false)
     private val lockScreenSecurityType = mutableStateOf("none")
+    private val hasUsageStatsPermission = mutableStateOf(false)
     private val launcherSettings = mutableStateOf(LumoLauncherSettings())
     private var lockScreenSecurityHash = ""
     private var lockScreenSecuritySalt = ""
@@ -90,9 +93,11 @@ class SettingsActivity : ComponentActivity() {
                     onOpenWifiSettings = { startActivity(Intent(Settings.ACTION_WIFI_SETTINGS)) },
                     onOpenDisplaySettings = { startActivity(Intent(Settings.ACTION_DISPLAY_SETTINGS)) },
                     onOpenWallpaperSettings = { startActivity(Intent(Intent.ACTION_SET_WALLPAPER)) },
+                    hasUsageStatsPermission = hasUsageStatsPermission.value,
                     onOpenAccessibilitySettings = {
                         startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
                     },
+                    onOpenUsageAccessSettings = ::openUsageAccessSettings,
                     onUpdateIntSetting = { key, value -> updateIntSetting(key, value) },
                     onUpdateBoolSetting = { key, value -> updateBoolSetting(key, value) },
                     onRefresh = ::refreshStatus,
@@ -113,6 +118,7 @@ class SettingsActivity : ComponentActivity() {
         keyboardStatus.value = readLumoKeyboardStatus()
         hasOverlayPermission.value = Settings.canDrawOverlays(this)
         hasFullScreenIntentPermission.value = LumoLockScreenCompanionService.hasFullScreenIntentPermission(this)
+        hasUsageStatsPermission.value = checkUsageStatsPermission()
         supportsLockScreenCompanion.value = LumoLockScreenCompanionService.isWakeCompanionSupported()
         lifecycleScope.launch {
             val overlayEnabled = repository.isOverlaySidebarEnabled()
@@ -278,6 +284,20 @@ class SettingsActivity : ComponentActivity() {
             isLockScreenCompanionEnabled.value = false
             LumoLockScreenCompanionService.stop(this@SettingsActivity)
         }
+    }
+
+    private fun checkUsageStatsPermission(): Boolean {
+        val appOps = getSystemService(AppOpsManager::class.java) ?: return false
+        val mode = appOps.unsafeCheckOpNoThrow(
+            AppOpsManager.OPSTR_GET_USAGE_STATS,
+            Process.myUid(),
+            packageName,
+        )
+        return mode == AppOpsManager.MODE_ALLOWED
+    }
+
+    private fun openUsageAccessSettings() {
+        startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
     }
 
     private fun configureSystemBars() {

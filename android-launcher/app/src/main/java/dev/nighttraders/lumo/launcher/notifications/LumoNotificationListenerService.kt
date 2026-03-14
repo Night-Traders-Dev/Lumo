@@ -3,12 +3,24 @@ package dev.nighttraders.lumo.launcher.notifications
 import android.app.Notification
 import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
 import android.provider.Settings
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import java.util.Locale
 
 class LumoNotificationListenerService : NotificationListenerService() {
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private var syncJob: Job? = null
+
     override fun onCreate() {
         super.onCreate()
         listenerInstance = this
@@ -16,6 +28,8 @@ class LumoNotificationListenerService : NotificationListenerService() {
     }
 
     override fun onDestroy() {
+        syncJob?.cancel()
+        serviceScope.cancel()
         if (listenerInstance === this) {
             listenerInstance = null
         }
@@ -27,9 +41,12 @@ class LumoNotificationListenerService : NotificationListenerService() {
         listenerInstance = this
         LauncherNotificationCenter.setAccessEnabled(true)
         refreshFromActiveNotifications()
+        startPeriodicSync()
     }
 
     override fun onListenerDisconnected() {
+        syncJob?.cancel()
+        syncJob = null
         LauncherNotificationCenter.setAccessEnabled(applicationContext.hasNotificationListenerAccess())
         if (listenerInstance === this) {
             listenerInstance = null
@@ -52,10 +69,24 @@ class LumoNotificationListenerService : NotificationListenerService() {
         LauncherNotificationCenter.remove(sbn.key)
     }
 
+    /**
+     * Periodic background sync ensures our notification list matches the system's
+     * active notifications. Runs every 3 seconds on a background coroutine.
+     * Non-blocking — uses suspend + delay, not Thread.sleep.
+     */
+    private fun startPeriodicSync() {
+        syncJob?.cancel()
+        syncJob = serviceScope.launch {
+            while (isActive) {
+                delay(SYNC_INTERVAL_MS)
+                refreshFromActiveNotifications()
+            }
+        }
+    }
+
     private fun refreshFromActiveNotifications() {
-        val notifications = activeNotifications
-            ?.mapNotNull { it.toLauncherNotification(applicationContext) }
-            .orEmpty()
+        val active = runCatching { activeNotifications }.getOrNull() ?: return
+        val notifications = active.mapNotNull { it.toLauncherNotification(applicationContext) }
         LauncherNotificationCenter.replaceAll(notifications)
     }
 
@@ -78,6 +109,7 @@ class LumoNotificationListenerService : NotificationListenerService() {
     }
 
     companion object {
+        private const val SYNC_INTERVAL_MS = 3_000L
         private var listenerInstance: LumoNotificationListenerService? = null
 
         fun requestRefresh() {
@@ -110,8 +142,8 @@ class LumoNotificationListenerService : NotificationListenerService() {
                     .getLaunchIntentForPackage(sbn.packageName)
                     ?: throw IllegalStateException("No launch intent for ${sbn.packageName}")
                 launchIntent.addFlags(
-                    android.content.Intent.FLAG_ACTIVITY_NEW_TASK or
-                        android.content.Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED,
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED,
                 )
                 listener.startActivity(launchIntent)
                 listener.cancelNotification(sbn.key)

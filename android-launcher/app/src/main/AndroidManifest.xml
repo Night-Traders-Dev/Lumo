@@ -12,6 +12,8 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
         android:requiredFeature="false" />
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"
+        android:requiredFeature="false" />
 
     <queries>
         <intent>

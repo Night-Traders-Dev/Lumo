@@ -335,17 +335,34 @@ fun LumoLauncherApp(
                         ),
                     ) + fadeOut(animationSpec = tween(150)),
                 ) {
-                    AppsScopePage(
-                        apps = visibleApps,
-                        favoriteKeys = uiState.favoriteKeys,
-                        isLoading = uiState.isLoading,
-                        searchQuery = searchQuery,
-                        gridColumns = settings.appGridColumns,
-                        iconSizeDp = settings.appIconSizeDp,
-                        onSearchQueryChange = { searchQuery = it },
-                        onLaunchApp = onLaunchApp,
-                        onLongPressApp = { appActionTarget = it },
-                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .pointerInput(settings.horizontalSwipeThresholdDp) {
+                                val thresholdPx = settings.horizontalSwipeThresholdDp * density
+                                var totalDrag = 0f
+                                detectHorizontalDragGestures(
+                                    onHorizontalDrag = { _, dragAmount -> totalDrag += dragAmount },
+                                    onDragCancel = { totalDrag = 0f },
+                                    onDragEnd = {
+                                        if (totalDrag > thresholdPx) goHome()
+                                        totalDrag = 0f
+                                    },
+                                )
+                            },
+                    ) {
+                        AppsScopePage(
+                            apps = visibleApps,
+                            favoriteKeys = uiState.favoriteKeys,
+                            isLoading = uiState.isLoading,
+                            searchQuery = searchQuery,
+                            gridColumns = settings.appGridColumns,
+                            iconSizeDp = settings.appIconSizeDp,
+                            onSearchQueryChange = { searchQuery = it },
+                            onLaunchApp = onLaunchApp,
+                            onLongPressApp = { appActionTarget = it },
+                        )
+                    }
                 }
 
                 // Apps overlay sliding from right when triggered by horizontal swipe
@@ -367,17 +384,34 @@ fun LumoLauncherApp(
                         ),
                     ) + fadeOut(animationSpec = tween(150)),
                 ) {
-                    AppsScopePage(
-                        apps = visibleApps,
-                        favoriteKeys = uiState.favoriteKeys,
-                        isLoading = uiState.isLoading,
-                        searchQuery = searchQuery,
-                        gridColumns = settings.appGridColumns,
-                        iconSizeDp = settings.appIconSizeDp,
-                        onSearchQueryChange = { searchQuery = it },
-                        onLaunchApp = onLaunchApp,
-                        onLongPressApp = { appActionTarget = it },
-                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .pointerInput(settings.horizontalSwipeThresholdDp) {
+                                val thresholdPx = settings.horizontalSwipeThresholdDp * density
+                                var totalDrag = 0f
+                                detectHorizontalDragGestures(
+                                    onHorizontalDrag = { _, dragAmount -> totalDrag += dragAmount },
+                                    onDragCancel = { totalDrag = 0f },
+                                    onDragEnd = {
+                                        if (totalDrag > thresholdPx) goHome()
+                                        totalDrag = 0f
+                                    },
+                                )
+                            },
+                    ) {
+                        AppsScopePage(
+                            apps = visibleApps,
+                            favoriteKeys = uiState.favoriteKeys,
+                            isLoading = uiState.isLoading,
+                            searchQuery = searchQuery,
+                            gridColumns = settings.appGridColumns,
+                            iconSizeDp = settings.appIconSizeDp,
+                            onSearchQueryChange = { searchQuery = it },
+                            onLaunchApp = onLaunchApp,
+                            onLongPressApp = { appActionTarget = it },
+                        )
+                    }
                 }
 
                 if (settings.bottomEdgeGestureEnabled) {
@@ -470,7 +504,7 @@ fun LumoLauncherApp(
                         railWidthDp = settings.dashRailWidthDp,
                         apps = launcherApps,
                         onGoHome = { goHome() },
-                        onOpenApps = { openApps() },
+                        onOpenApps = { if (appsVisible) goHome() else openApps() },
                         onOpenSettings = onOpenSettings,
                         onLaunchApp = { app ->
                             railVisible = false

@@ -15,12 +15,15 @@ import dev.nighttraders.lumo.launcher.notifications.LauncherNotification
 import dev.nighttraders.lumo.launcher.notifications.LauncherNotificationCenter
 import dev.nighttraders.lumo.launcher.notifications.LumoNotificationListenerService
 import dev.nighttraders.lumo.launcher.notifications.hasNotificationListenerAccess
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 class LauncherViewModel(application: Application) : AndroidViewModel(application) {
@@ -28,7 +31,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     private val loading = MutableStateFlow(true)
     private val apps = MutableStateFlow<List<LaunchableApp>>(emptyList())
     private val favoriteKeys = repository.observeFavoriteKeys()
-    private val recentAppKeys = repository.observeRecentAppKeys()
+    private val recentAppKeys = repository.recentAppKeysFlow
     private val defaultHome = MutableStateFlow(false)
     private val notificationAccess = MutableStateFlow(application.hasNotificationListenerAccess())
     private val notifications = LauncherNotificationCenter.notifications
@@ -75,6 +78,8 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         LauncherNotificationCenter.setAccessEnabled(notificationAccess.value)
         refreshApps()
         refreshNotifications()
+        refreshRecentApps()
+        startPeriodicRefresh()
     }
 
     fun refreshApps() {
@@ -168,7 +173,30 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         LumoNotificationListenerService.requestRefresh()
     }
 
+    fun refreshRecentApps() {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.refreshRecentApps()
+        }
+    }
+
+    /**
+     * Periodic background refresh using a coroutine-based non-blocking timer.
+     * Keeps recent apps and notifications in sync with the system.
+     * - Recent apps: every 5 seconds (checks actual system usage)
+     * - Notifications: triggered by listener service's own 3-second sync
+     */
+    private fun startPeriodicRefresh() {
+        viewModelScope.launch(Dispatchers.IO) {
+            while (isActive) {
+                delay(RECENT_APPS_REFRESH_MS)
+                repository.refreshRecentApps()
+            }
+        }
+    }
+
     companion object {
+        private const val RECENT_APPS_REFRESH_MS = 5_000L
+
         val Factory: ViewModelProvider.Factory = viewModelFactory {
             initializer {
                 val application =

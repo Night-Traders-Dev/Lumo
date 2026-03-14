@@ -1,5 +1,8 @@
 package dev.nighttraders.lumo.launcher.data
 
+import android.app.AppOpsManager
+import android.app.usage.UsageEvents
+import android.app.usage.UsageStatsManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -14,6 +17,9 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
@@ -22,12 +28,18 @@ import java.util.Locale
 private const val ICON_SIZE_DP = 56
 private const val MAX_RECENT_APPS = 12
 private const val RECENT_SEPARATOR = "|"
+private const val RECENT_WINDOW_MS = 24L * 60 * 60 * 1000 // 24 hours
 
 private val Context.launcherPreferences by preferencesDataStore(name = "lumo_launcher")
 
 class LauncherRepository(private val context: Context) {
     private val packageManager = context.packageManager
     private val launcherApps = context.getSystemService(LauncherApps::class.java)
+    private val usageStatsManager = context.getSystemService(UsageStatsManager::class.java)
+
+    /** Reactive recent app keys — updated by periodic polling or manual recording. */
+    private val _recentAppKeys = MutableStateFlow<List<String>>(emptyList())
+    val recentAppKeysFlow: StateFlow<List<String>> = _recentAppKeys.asStateFlow()
 
     fun observeFavoriteKeys(): Flow<Set<String>> =
         context.launcherPreferences.data.map { preferences ->
@@ -199,22 +211,101 @@ class LauncherRepository(private val context: Context) {
         context.startActivity(intent)
     }
 
+    /**
+     * Record a launched app. Persists to DataStore and updates the reactive flow immediately.
+     */
     suspend fun recordRecentApp(componentKey: String) {
         context.launcherPreferences.edit { preferences ->
             val raw = preferences[LauncherPreferences.recentAppKeys].orEmpty()
             val current = if (raw.isBlank()) mutableListOf() else raw.split(RECENT_SEPARATOR).toMutableList()
             current.remove(componentKey)
             current.add(0, componentKey)
+            val updated = current.take(MAX_RECENT_APPS)
             preferences[LauncherPreferences.recentAppKeys] =
-                current.take(MAX_RECENT_APPS).joinToString(RECENT_SEPARATOR)
+                updated.joinToString(RECENT_SEPARATOR)
+            _recentAppKeys.value = updated
         }
     }
 
+    /**
+     * Observe recent app keys from DataStore (legacy flow, kept for compatibility).
+     */
     fun observeRecentAppKeys(): Flow<List<String>> =
         context.launcherPreferences.data.map { preferences ->
             val raw = preferences[LauncherPreferences.recentAppKeys].orEmpty()
             if (raw.isBlank()) emptyList() else raw.split(RECENT_SEPARATOR)
         }
+
+    /**
+     * Check if the app has usage stats permission.
+     */
+    fun hasUsageStatsPermission(): Boolean {
+        val appOps = context.getSystemService(AppOpsManager::class.java) ?: return false
+        val mode = appOps.unsafeCheckOpNoThrow(
+            AppOpsManager.OPSTR_GET_USAGE_STATS,
+            Process.myUid(),
+            context.packageName,
+        )
+        return mode == AppOpsManager.MODE_ALLOWED
+    }
+
+    /**
+     * Query the system for actual recent app usage via UsageStatsManager.
+     * Returns component keys of recently used launcher apps, ordered by most recent first.
+     * Runs on IO dispatcher — non-blocking.
+     */
+    suspend fun loadRecentAppsFromSystem(): List<String> = withContext(Dispatchers.IO) {
+        if (!hasUsageStatsPermission() || usageStatsManager == null) {
+            // Fall back to DataStore-based tracking
+            return@withContext observeRecentAppKeys().first()
+        }
+
+        val endTime = System.currentTimeMillis()
+        val startTime = endTime - RECENT_WINDOW_MS
+
+        val recentPackages = LinkedHashMap<String, Long>()
+        val events = runCatching {
+            usageStatsManager.queryEvents(startTime, endTime)
+        }.getOrNull() ?: return@withContext observeRecentAppKeys().first()
+
+        val event = UsageEvents.Event()
+        while (events.hasNextEvent()) {
+            events.getNextEvent(event)
+            if (event.eventType == UsageEvents.Event.ACTIVITY_RESUMED) {
+                val pkg = event.packageName ?: continue
+                // Skip our own package
+                if (pkg == context.packageName) continue
+                recentPackages[pkg] = event.timeStamp
+            }
+        }
+
+        // Sort by most recent usage, then resolve to component keys
+        val sortedPackages = recentPackages.entries
+            .sortedByDescending { it.value }
+            .map { it.key }
+            .take(MAX_RECENT_APPS)
+
+        // Resolve package names to component keys using LauncherApps
+        val componentKeys = sortedPackages.mapNotNull { pkg ->
+            launcherApps?.getActivityList(pkg, Process.myUserHandle())
+                ?.firstOrNull()
+                ?.componentName
+                ?.flattenToShortString()
+        }
+
+        // Update the reactive flow
+        _recentAppKeys.value = componentKeys
+        componentKeys
+    }
+
+    /**
+     * Refresh recent apps — uses system stats if available, falls back to DataStore.
+     * Updates the reactive StateFlow.
+     */
+    suspend fun refreshRecentApps() {
+        val keys = loadRecentAppsFromSystem()
+        _recentAppKeys.value = keys
+    }
 
     fun launchApp(app: LaunchableApp): Result<Unit> {
         val componentName = ComponentName(app.packageName, app.className)
