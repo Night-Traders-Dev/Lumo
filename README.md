@@ -9,16 +9,6 @@ This repository contains two codebases:
 
 If you are here to build or test the current launcher, start with [android-launcher/README.md](android-launcher/README.md), [UPDATES.md](UPDATES.md), and [Lumo_Guide.md](Lumo_Guide.md).
 
-## Screenshots
-
-![Home](screenshots/home_screen.png)
-![App Drawer](screenshots/app_drawer.png)
-![Dock Rail](screenshots/launcher_rail.png)
-![Indicators](screenshots/indicators_panel.png)
-![Lock Screen](screenshots/lock_screen.png)
-![Keyboard](screenshots/keyboard.png)
-![Settings](screenshots/settings_screen.png)
-![Heads-up Notification](screenshots/notification_headsup.png)
 
 ## Current Android Scope
 

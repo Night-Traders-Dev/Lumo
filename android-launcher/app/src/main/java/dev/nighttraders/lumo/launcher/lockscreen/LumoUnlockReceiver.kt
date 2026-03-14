@@ -3,22 +3,18 @@ package dev.nighttraders.lumo.launcher.lockscreen
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import dev.nighttraders.lumo.launcher.MainActivity
 
 /**
- * Listens for screen-off events and launches the Lumo lock screen
- * so it is visible when the user turns the screen back on.
- * Also handles USER_PRESENT to bring the launcher home to the foreground.
+ * Listens for screen-off events and locks the dash so the user must
+ * authenticate when the screen comes back on.  Since Lumo is the home app,
+ * MainActivity is already shown on wake — its dash-lock overlay handles
+ * the PIN/password challenge.  No need to launch a separate LockScreenActivity.
  */
 class LumoUnlockReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         when (intent.action) {
             Intent.ACTION_SCREEN_OFF -> {
                 LumoLockState.lock()
-                context.startActivity(LockScreenActivity.createIntent(context))
-            }
-            Intent.ACTION_USER_PRESENT -> {
-                context.startActivity(MainActivity.createHomeIntent(context))
             }
         }
     }

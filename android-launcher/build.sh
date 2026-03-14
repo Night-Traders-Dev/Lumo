@@ -4,6 +4,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 echo "==> Building debug APK..."
+./gradlew clean build
 ./gradlew assembleDebug
 
 APK="app/build/outputs/apk/debug/app-debug.apk"

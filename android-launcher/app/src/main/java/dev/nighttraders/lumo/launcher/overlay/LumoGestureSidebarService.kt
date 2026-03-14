@@ -31,6 +31,7 @@ import dev.nighttraders.lumo.launcher.MainActivity
 import dev.nighttraders.lumo.launcher.R
 import dev.nighttraders.lumo.launcher.data.LaunchableApp
 import dev.nighttraders.lumo.launcher.data.LauncherRepository
+import dev.nighttraders.lumo.launcher.lockscreen.LumoLockState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -122,7 +123,9 @@ class LumoGestureSidebarService : Service() {
     }
 
     private fun showRail() {
-        if (railView != null || !Settings.canDrawOverlays(this) || isDeviceLocked()) {
+        if (railView != null || !Settings.canDrawOverlays(this) || isDeviceLocked()
+            || LumoLockState.isLocked.value
+        ) {
             return
         }
 

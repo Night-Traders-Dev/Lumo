@@ -533,7 +533,8 @@ fun LumoLauncherApp(
             }
         }
 
-        // Dash rail — flush against the left edge, below status bar
+        // Dash rail — flush against the left edge, below the launcher top bar
+        // Top bar occupies ~46dp from top (6dp column padding + 40dp bar height)
         if (railVisible) {
             val dismissInteraction = remember { MutableInteractionSource() }
             Box(
@@ -551,7 +552,8 @@ fun LumoLauncherApp(
             visible = railVisible,
             modifier = Modifier
                 .align(Alignment.TopStart)
-                .windowInsetsPadding(WindowInsets.systemBars),
+                .windowInsetsPadding(WindowInsets.systemBars)
+                .padding(top = 48.dp),
             enter = slideInHorizontally(
                 initialOffsetX = { -it },
                 animationSpec = spring(
@@ -1666,7 +1668,6 @@ private fun UbuntuTouchLauncherRail(
     // Drag-and-drop reorder state
     var draggedIndex by remember { mutableStateOf(-1) }
     var dragOffsetY by remember { mutableStateOf(0f) }
-    val currentOrder = remember(apps) { apps.map { it.componentKey }.toMutableList() }
     var displayOrder by remember(apps) { mutableStateOf(apps) }
 
     Surface(
@@ -1738,12 +1739,12 @@ private fun UbuntuTouchLauncherRail(
                                 )
                             },
                     ) {
-                        DockAppIcon(
+                        // Tap launches; long-press is consumed by the drag gesture above
+                        RailAppIcon(
                             app = app,
                             sizeDp = iconSizeDp,
                             squircle = dockSquircle,
                             onLaunchApp = onLaunchApp,
-                            onToggleFavorite = onToggleFavorite,
                         )
                     }
                 }
@@ -1786,6 +1787,27 @@ private fun DockSeparator() {
             .height(1.dp)
             .background(Color(0x44FFFFFF)),
     )
+}
+
+/** Rail icon: tap to launch. Long press is handled by the drag gesture on the parent. */
+@Composable
+private fun RailAppIcon(
+    app: LaunchableApp,
+    sizeDp: Int = 52,
+    squircle: Shape,
+    onLaunchApp: (LaunchableApp) -> Unit,
+) {
+    val iconInner = (sizeDp * 0.85f).toInt()
+    Box(
+        modifier = Modifier
+            .size(sizeDp.dp)
+            .clip(squircle)
+            .background(Color(0x33FFFFFF))
+            .clickable { onLaunchApp(app) },
+        contentAlignment = Alignment.Center,
+    ) {
+        AppIcon(app = app, size = iconInner.dp)
+    }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
