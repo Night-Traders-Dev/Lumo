@@ -6,8 +6,11 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,7 +36,6 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -51,7 +53,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -86,6 +87,12 @@ fun MessagingScreen(
     onSend: (String) -> Unit,
     onNewMessage: () -> Unit,
     onDeleteThread: (Long) -> Unit,
+    showNewMessage: Boolean = false,
+    onSendNewMessage: (address: String, body: String) -> Unit = { _, _ -> },
+    onCancelNewMessage: () -> Unit = {},
+    onShareMessage: (SmsMessage) -> Unit = {},
+    onDeleteMessage: (SmsMessage) -> Unit = {},
+    onSearchContacts: suspend (String) -> List<SmsRepository.ContactResult> = { emptyList() },
 ) {
     Box(
         modifier = Modifier
@@ -97,31 +104,29 @@ fun MessagingScreen(
             )
             .windowInsetsPadding(WindowInsets.systemBars),
     ) {
-        AnimatedContent(
-            targetState = currentThread,
-            transitionSpec = {
-                if (targetState != null) {
-                    (slideInHorizontally { it } + fadeIn()) togetherWith
-                        (slideOutHorizontally { -it / 3 } + fadeOut())
-                } else {
-                    (slideInHorizontally { -it } + fadeIn()) togetherWith
-                        (slideOutHorizontally { it / 3 } + fadeOut())
-                }
-            },
-            label = "messaging-nav",
-        ) { thread ->
-            if (thread == null) {
+        when {
+            showNewMessage -> {
+                NewMessageScreen(
+                    onBack = onCancelNewMessage,
+                    onSend = onSendNewMessage,
+                    onSearchContacts = onSearchContacts,
+                )
+            }
+            currentThread != null -> {
+                ThreadScreen(
+                    conversation = currentThread,
+                    messages = messages,
+                    onBack = onBack,
+                    onSend = onSend,
+                    onShareMessage = onShareMessage,
+                    onDeleteMessage = onDeleteMessage,
+                )
+            }
+            else -> {
                 ConversationListScreen(
                     conversations = conversations,
                     onSelect = onSelectConversation,
                     onNewMessage = onNewMessage,
-                )
-            } else {
-                ThreadScreen(
-                    conversation = thread,
-                    messages = messages,
-                    onBack = onBack,
-                    onSend = onSend,
                 )
             }
         }
@@ -294,9 +299,13 @@ private fun ThreadScreen(
     messages: List<SmsMessage>,
     onBack: () -> Unit,
     onSend: (String) -> Unit,
+    onShareMessage: (SmsMessage) -> Unit = {},
+    onDeleteMessage: (SmsMessage) -> Unit = {},
 ) {
     val listState = rememberLazyListState()
     var inputText by rememberSaveable { mutableStateOf("") }
+    var selectedMessage by remember { mutableStateOf<SmsMessage?>(null) }
+    var replyToMessage by remember { mutableStateOf<SmsMessage?>(null) }
 
     // Auto-scroll to bottom when messages change
     LaunchedEffect(messages.size) {
@@ -374,7 +383,77 @@ private fun ThreadScreen(
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             items(messages, key = { it.id }) { message ->
-                MessageBubble(message = message)
+                MessageBubble(
+                    message = message,
+                    isSelected = selectedMessage?.id == message.id,
+                    onLongPress = { selectedMessage = message },
+                    onTap = { if (selectedMessage != null) selectedMessage = null },
+                )
+            }
+        }
+
+        // Message action bar (appears when a message is long-pressed)
+        AnimatedVisibility(visible = selectedMessage != null) {
+            selectedMessage?.let { msg ->
+                MessageActionBar(
+                    onReply = {
+                        replyToMessage = msg
+                        inputText = ""
+                        selectedMessage = null
+                    },
+                    onShare = {
+                        onShareMessage(msg)
+                        selectedMessage = null
+                    },
+                    onDelete = {
+                        onDeleteMessage(msg)
+                        selectedMessage = null
+                    },
+                    onDismiss = { selectedMessage = null },
+                )
+            }
+        }
+
+        // Reply indicator
+        if (replyToMessage != null) {
+            Surface(color = Color(0xFF2A1F2E)) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .width(3.dp)
+                            .height(32.dp)
+                            .background(UbuntuOrange),
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Reply",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = UbuntuOrange,
+                        )
+                        Text(
+                            text = replyToMessage!!.body,
+                            fontSize = 12.sp,
+                            color = TextSecondary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    Text(
+                        text = "\u2715",
+                        fontSize = 18.sp,
+                        color = TextMuted,
+                        modifier = Modifier
+                            .clickable { replyToMessage = null }
+                            .padding(8.dp),
+                    )
+                }
             }
         }
 
@@ -458,11 +537,19 @@ private fun ThreadScreen(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun MessageBubble(message: SmsMessage) {
+private fun MessageBubble(
+    message: SmsMessage,
+    isSelected: Boolean = false,
+    onLongPress: () -> Unit = {},
+    onTap: () -> Unit = {},
+) {
     val isOutgoing = message.isOutgoing
     val alignment = if (isOutgoing) Alignment.CenterEnd else Alignment.CenterStart
-    val bubbleColor = if (isOutgoing) BubbleOutgoing else BubbleIncoming
+    val bubbleColor = if (isSelected) {
+        Color(0xFF5E2750)
+    } else if (isOutgoing) BubbleOutgoing else BubbleIncoming
     val shape = if (isOutgoing) {
         RoundedCornerShape(16.dp, 16.dp, 4.dp, 16.dp)
     } else {
@@ -478,28 +565,290 @@ private fun MessageBubble(message: SmsMessage) {
             ),
         contentAlignment = alignment,
     ) {
-        Surface(
-            color = bubbleColor,
-            shape = shape,
+        Box(
+            modifier = Modifier
+                .clip(shape)
+                .combinedClickable(
+                    onClick = onTap,
+                    onLongClick = onLongPress,
+                ),
         ) {
-            Column(
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+            Surface(
+                color = bubbleColor,
+                shape = shape,
             ) {
+                Column(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                ) {
+                    Text(
+                        text = message.body,
+                        fontSize = 15.sp,
+                        color = TextPrimary,
+                        lineHeight = 20.sp,
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = SmsRepository.formatTimestamp(message.timestamp),
+                        fontSize = 11.sp,
+                        color = TextMuted,
+                        modifier = Modifier.align(Alignment.End),
+                    )
+                }
+            }
+        }
+    }
+}
+
+// ── Message Action Bar ───────────────────────────────────────────────────────
+
+@Composable
+private fun MessageActionBar(
+    onReply: () -> Unit,
+    onShare: () -> Unit,
+    onDelete: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    Surface(color = Color(0xEE1A0816)) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+        ) {
+            ActionButton(label = "Reply", icon = "\u21A9", onClick = onReply)
+            ActionButton(label = "Share", icon = "\u2197", onClick = onShare)
+            ActionButton(label = "Delete", icon = "\u2717", color = Color(0xFFED3146), onClick = onDelete)
+            ActionButton(label = "Cancel", icon = "\u2715", onClick = onDismiss)
+        }
+    }
+}
+
+@Composable
+private fun ActionButton(
+    label: String,
+    icon: String,
+    color: Color = TextPrimary,
+    onClick: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            text = icon,
+            fontSize = 20.sp,
+            color = color,
+        )
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(
+            text = label,
+            fontSize = 11.sp,
+            color = TextSecondary,
+        )
+    }
+}
+
+// ── New Message Screen ───────────────────────────────────────────────────────
+
+@Composable
+private fun NewMessageScreen(
+    onBack: () -> Unit,
+    onSend: (address: String, body: String) -> Unit,
+    onSearchContacts: suspend (String) -> List<SmsRepository.ContactResult> = { emptyList() },
+) {
+    var recipientText by rememberSaveable { mutableStateOf("") }
+    var messageText by rememberSaveable { mutableStateOf("") }
+    var contactSuggestions by remember { mutableStateOf<List<SmsRepository.ContactResult>>(emptyList()) }
+    var showSuggestions by remember { mutableStateOf(false) }
+
+    // Search contacts as user types
+    LaunchedEffect(recipientText) {
+        if (recipientText.length >= 2) {
+            contactSuggestions = onSearchContacts(recipientText)
+            showSuggestions = contactSuggestions.isNotEmpty()
+        } else {
+            contactSuggestions = emptyList()
+            showSuggestions = false
+        }
+    }
+
+    Column(modifier = Modifier.fillMaxSize().imePadding()) {
+        // Header
+        Surface(color = Color(0xFF2C001E)) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IconButton(onClick = onBack) {
+                    Text(
+                        text = "\u2190",
+                        fontSize = 24.sp,
+                        color = TextPrimary,
+                    )
+                }
                 Text(
-                    text = message.body,
-                    fontSize = 15.sp,
+                    text = "New message",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Light,
                     color = TextPrimary,
-                    lineHeight = 20.sp,
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = SmsRepository.formatTimestamp(message.timestamp),
-                    fontSize = 11.sp,
-                    color = TextMuted,
-                    modifier = Modifier.align(Alignment.End),
                 )
             }
         }
+
+        // Recipient field
+        Surface(color = Color(0xFF1E1A24)) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "To:",
+                    fontSize = 15.sp,
+                    color = TextSecondary,
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                BasicTextField(
+                    value = recipientText,
+                    onValueChange = { recipientText = it },
+                    modifier = Modifier.weight(1f),
+                    textStyle = TextStyle(color = TextPrimary, fontSize = 15.sp),
+                    cursorBrush = SolidColor(UbuntuOrange),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
+                    singleLine = true,
+                    decorationBox = { innerTextField ->
+                        Box {
+                            if (recipientText.isEmpty()) {
+                                Text(
+                                    text = "Name or phone number",
+                                    color = TextMuted,
+                                    fontSize = 15.sp,
+                                )
+                            }
+                            innerTextField()
+                        }
+                    },
+                )
+            }
+        }
+
+        // Contact suggestions dropdown
+        AnimatedVisibility(visible = showSuggestions) {
+            Surface(color = Color(0xFF1E1A24)) {
+                Column {
+                    contactSuggestions.forEach { contact ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    recipientText = contact.phoneNumber
+                                    showSuggestions = false
+                                }
+                                .padding(horizontal = 16.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            // Avatar
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .background(avatarColor(contact.phoneNumber)),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    text = contact.name.firstOrNull()?.uppercase() ?: "#",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = Color.White,
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(
+                                    text = contact.name,
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = TextPrimary,
+                                )
+                                Text(
+                                    text = contact.phoneNumber,
+                                    fontSize = 13.sp,
+                                    color = TextSecondary,
+                                )
+                            }
+                        }
+                        HorizontalDivider(color = DividerColor, thickness = 0.5.dp)
+                    }
+                }
+            }
+        }
+
+        HorizontalDivider(color = DividerColor, thickness = 0.5.dp)
+
+        // Message area
+        Box(modifier = Modifier.weight(1f).fillMaxWidth().padding(16.dp)) {
+            BasicTextField(
+                value = messageText,
+                onValueChange = { messageText = it },
+                modifier = Modifier.fillMaxSize(),
+                textStyle = TextStyle(color = TextPrimary, fontSize = 15.sp, lineHeight = 22.sp),
+                cursorBrush = SolidColor(UbuntuOrange),
+                decorationBox = { innerTextField ->
+                    Box {
+                        if (messageText.isEmpty()) {
+                            Text(
+                                text = "Type your message...",
+                                color = TextMuted,
+                                fontSize = 15.sp,
+                            )
+                        }
+                        innerTextField()
+                    }
+                },
+            )
+        }
+
+        // Send bar
+        Surface(color = Color(0xDD0E0A10)) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                val canSend = recipientText.isNotBlank() && messageText.isNotBlank()
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(if (canSend) UbuntuOrange else Color(0xFF3C2847))
+                        .clickable(enabled = canSend) {
+                            onSend(recipientText.trim(), messageText.trim())
+                        }
+                        .padding(horizontal = 24.dp, vertical = 10.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = "Send",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = Color.White,
+                    )
+                }
+            }
+        }
+
+        // Orange accent bar
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(2.dp)
+                .background(UbuntuOrange),
+        )
     }
 }
 

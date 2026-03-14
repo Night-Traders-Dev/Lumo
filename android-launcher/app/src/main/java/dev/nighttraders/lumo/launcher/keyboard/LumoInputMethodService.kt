@@ -509,7 +509,13 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
     }
 
     private fun toggleShift() {
-        shifted = !shifted
+        if (autoCapitalization && !shifted) {
+            // User tapped shift while auto-cap is active → turn off capitalization
+            autoCapitalization = false
+            shifted = false
+        } else {
+            shifted = !shifted
+        }
         rebuildKeyboardRows()
     }
 

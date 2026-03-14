@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Lumo Terminal icon: terminal prompt with cursor -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+
+    <!-- Terminal window background -->
+    <path
+        android:fillColor="#300A24"
+        android:pathData="M6,10 C6,7.79 7.79,6 10,6 L38,6 C40.21,6 42,7.79 42,10 L42,38 C42,40.21 40.21,42 38,42 L10,42 C7.79,42 6,40.21 6,38 Z" />
+
+    <!-- Title bar -->
+    <path
+        android:fillColor="#2C001E"
+        android:pathData="M6,10 C6,7.79 7.79,6 10,6 L38,6 C40.21,6 42,7.79 42,10 L42,14 L6,14 Z" />
+
+    <!-- Title bar dot -->
+    <path
+        android:fillColor="#E95420"
+        android:pathData="M10,10 A1.5,1.5 0,1 1,10 13 A1.5,1.5 0,1 1,10 10z" />
+
+    <!-- Prompt arrow > -->
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeWidth="2.5"
+        android:strokeColor="#4E9A06"
+        android:pathData="M12,22 L18,26 L12,30" />
+
+    <!-- Cursor block -->
+    <path
+        android:fillColor="#E95420"
+        android:pathData="M22,23 L28,23 L28,29 L22,29 Z" />
+
+    <!-- Tilde text line -->
+    <path
+        android:fillColor="#777777"
+        android:pathData="M12,35 L32,35 L32,37 L12,37 Z" />
+</vector>

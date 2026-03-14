@@ -9,6 +9,7 @@
     <string name="notification_snooze_failed_message">Could not snooze that notification.</string>
     <string name="notification_listener_label">Lumo Notifications</string>
     <string name="messaging_app_name">Lumo Messages</string>
+    <string name="terminal_app_name">Lumo Terminal</string>
     <string name="lumo_keyboard_label">Lumo Keyboard</string>
     <string name="gesture_sidebar_label">Lumo Gesture Sidebar</string>
     <string name="lock_screen_service_label">Lumo Wake Lock Screen</string>

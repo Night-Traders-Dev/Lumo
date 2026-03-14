@@ -226,6 +226,55 @@ class SmsRepository(private val context: Context) {
         return result
     }
 
+    data class ContactResult(
+        val name: String,
+        val phoneNumber: String,
+    )
+
+    suspend fun searchContacts(query: String): List<ContactResult> = withContext(Dispatchers.IO) {
+        if (query.isBlank()) return@withContext emptyList()
+        val results = mutableListOf<ContactResult>()
+        val seen = mutableSetOf<String>()
+
+        runCatching {
+            val uri = ContactsContract.CommonDataKinds.Phone.CONTENT_URI
+            val projection = arrayOf(
+                ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+                ContactsContract.CommonDataKinds.Phone.NUMBER,
+            )
+            val selection = "${ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME} LIKE ? OR ${ContactsContract.CommonDataKinds.Phone.NUMBER} LIKE ?"
+            val selectionArgs = arrayOf("%$query%", "%$query%")
+            val sortOrder = "${ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME} ASC"
+
+            contentResolver.query(uri, projection, selection, selectionArgs, sortOrder)?.use { cursor ->
+                val nameIdx = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
+                val numberIdx = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
+                while (cursor.moveToNext() && results.size < 8) {
+                    val name = if (nameIdx >= 0) cursor.getString(nameIdx) else null
+                    val number = if (numberIdx >= 0) cursor.getString(numberIdx) else null
+                    if (!name.isNullOrBlank() && !number.isNullOrBlank()) {
+                        val normalized = number.replace(Regex("[^0-9+]"), "")
+                        if (seen.add(normalized)) {
+                            results.add(ContactResult(name, number))
+                        }
+                    }
+                }
+            }
+        }
+
+        results
+    }
+
+    suspend fun deleteMessage(messageId: Long) = withContext(Dispatchers.IO) {
+        runCatching {
+            contentResolver.delete(
+                Telephony.Sms.CONTENT_URI,
+                "${Telephony.Sms._ID} = ?",
+                arrayOf(messageId.toString()),
+            )
+        }
+    }
+
     suspend fun deleteThread(threadId: Long) = withContext(Dispatchers.IO) {
         runCatching {
             contentResolver.delete(

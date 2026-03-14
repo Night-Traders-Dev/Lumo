@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Lumo Messages icon: chat bubble with speech tail -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+
+    <!-- Chat bubble -->
+    <path
+        android:fillColor="#E95420"
+        android:pathData="M8,10 C8,7.79 9.79,6 12,6 L36,6 C38.21,6 40,7.79 40,10 L40,28 C40,30.21 38.21,32 36,32 L18,32 L12,38 L12,32 C9.79,32 8,30.21 8,28 Z" />
+
+    <!-- Three dots -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M16,19 A2,2 0,1 1,16 23 A2,2 0,1 1,16 19z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M24,19 A2,2 0,1 1,24 23 A2,2 0,1 1,24 19z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M32,19 A2,2 0,1 1,32 23 A2,2 0,1 1,32 19z" />
+</vector>

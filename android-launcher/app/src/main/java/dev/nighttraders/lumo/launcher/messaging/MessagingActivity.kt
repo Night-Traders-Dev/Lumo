@@ -1,6 +1,7 @@
 package dev.nighttraders.lumo.launcher.messaging
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.widget.Toast
@@ -25,6 +26,7 @@ class MessagingActivity : ComponentActivity() {
     private var messages by mutableStateOf<List<SmsMessage>>(emptyList())
     private var currentThread by mutableStateOf<SmsConversation?>(null)
     private var hasPermission by mutableStateOf(false)
+    private var showNewMessage by mutableStateOf(false)
 
     private val requestSmsPermission =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
@@ -51,7 +53,6 @@ class MessagingActivity : ComponentActivity() {
         setContent {
             LumoLauncherTheme {
                 if (!hasPermission) {
-                    // Will show after permission is granted
                     MessagingScreen(
                         conversations = emptyList(),
                         messages = emptyList(),
@@ -68,6 +69,7 @@ class MessagingActivity : ComponentActivity() {
                         messages = messages,
                         currentThread = currentThread,
                         onSelectConversation = { conversation ->
+                            showNewMessage = false
                             currentThread = conversation
                             loadMessages(conversation.threadId)
                         },
@@ -75,7 +77,7 @@ class MessagingActivity : ComponentActivity() {
                             if (currentThread != null) {
                                 currentThread = null
                                 messages = emptyList()
-                                loadConversations() // Refresh in case read status changed
+                                loadConversations()
                             } else {
                                 finish()
                             }
@@ -85,10 +87,7 @@ class MessagingActivity : ComponentActivity() {
                                 sendMessage(thread.address, body, thread.threadId)
                             }
                         },
-                        onNewMessage = {
-                            // TODO: new conversation dialog
-                            Toast.makeText(this, "New message coming soon", Toast.LENGTH_SHORT).show()
-                        },
+                        onNewMessage = { showNewMessage = true },
                         onDeleteThread = { threadId ->
                             lifecycleScope.launch {
                                 smsRepository.deleteThread(threadId)
@@ -98,6 +97,40 @@ class MessagingActivity : ComponentActivity() {
                                 }
                                 loadConversations()
                             }
+                        },
+                        showNewMessage = showNewMessage,
+                        onSendNewMessage = { address, body ->
+                            lifecycleScope.launch {
+                                val result = smsRepository.sendSms(address, body)
+                                if (result.isSuccess) {
+                                    showNewMessage = false
+                                    kotlinx.coroutines.delay(500)
+                                    loadConversations()
+                                } else {
+                                    Toast.makeText(
+                                        this@MessagingActivity,
+                                        "Failed to send message",
+                                        Toast.LENGTH_SHORT,
+                                    ).show()
+                                }
+                            }
+                        },
+                        onCancelNewMessage = { showNewMessage = false },
+                        onShareMessage = { msg ->
+                            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_TEXT, msg.body)
+                            }
+                            startActivity(Intent.createChooser(shareIntent, "Share message"))
+                        },
+                        onDeleteMessage = { msg ->
+                            lifecycleScope.launch {
+                                smsRepository.deleteMessage(msg.id)
+                                currentThread?.let { loadMessages(it.threadId) }
+                            }
+                        },
+                        onSearchContacts = { query ->
+                            smsRepository.searchContacts(query)
                         },
                     )
                 }
@@ -115,13 +148,17 @@ class MessagingActivity : ComponentActivity() {
 
     @Deprecated("Use OnBackPressedDispatcher")
     override fun onBackPressed() {
-        if (currentThread != null) {
-            currentThread = null
-            messages = emptyList()
-            loadConversations()
-        } else {
-            @Suppress("DEPRECATION")
-            super.onBackPressed()
+        when {
+            showNewMessage -> showNewMessage = false
+            currentThread != null -> {
+                currentThread = null
+                messages = emptyList()
+                loadConversations()
+            }
+            else -> {
+                @Suppress("DEPRECATION")
+                super.onBackPressed()
+            }
         }
     }
 
