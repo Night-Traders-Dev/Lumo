@@ -490,11 +490,17 @@ class MainActivity : ComponentActivity() {
         const val EXTRA_START_PAGE = "dev.nighttraders.lumo.launcher.EXTRA_START_PAGE"
         const val START_PAGE_HOME = 0
         const val START_PAGE_APPS = 1
+        const val START_PAGE_DASH = 2
 
         fun createHomeIntent(context: Context): Intent =
             Intent(context, MainActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
                 .putExtra(EXTRA_START_PAGE, START_PAGE_HOME)
+
+        fun createDashIntent(context: Context): Intent =
+            Intent(context, MainActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                .putExtra(EXTRA_START_PAGE, START_PAGE_DASH)
 
         fun createAppsIntent(context: Context): Intent =
             Intent(context, MainActivity::class.java)

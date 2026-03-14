@@ -177,18 +177,26 @@ fun LumoLauncherApp(
     // React to external navigation requests (e.g. gesture sidebar "open apps" intent)
     LaunchedEffect(navigationRequestId) {
         if (navigationRequestId > 0) {
-            val requested = when (requestedPageIndex) {
-                1 -> LauncherScreen.APP_DRAWER_SIDE
-                else -> LauncherScreen.HOME
+            when (requestedPageIndex) {
+                2 -> {
+                    // Dash rail request (from overlay edge gesture)
+                    railVisible = !railVisible
+                    LumoDebugLog.d("Nav", "Intent reqId=$navigationRequestId -> toggle dash rail (visible=$railVisible)")
+                }
+                else -> {
+                    val requested = when (requestedPageIndex) {
+                        1 -> LauncherScreen.APP_DRAWER_SIDE
+                        else -> LauncherScreen.HOME
+                    }
+                    val target = if (currentScreen == requested && requested != LauncherScreen.HOME) {
+                        LauncherScreen.HOME
+                    } else {
+                        requested
+                    }
+                    LumoDebugLog.d("Nav", "Intent reqId=$navigationRequestId page=$requestedPageIndex current=$currentScreen -> $target")
+                    currentScreen = target
+                }
             }
-            // Toggle: if already on the requested screen, go home instead
-            val target = if (currentScreen == requested && requested != LauncherScreen.HOME) {
-                LauncherScreen.HOME
-            } else {
-                requested
-            }
-            LumoDebugLog.d("Nav", "Intent reqId=$navigationRequestId page=$requestedPageIndex current=$currentScreen -> $target")
-            currentScreen = target
         }
     }
 

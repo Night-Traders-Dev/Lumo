@@ -1,28 +1,32 @@
 # Gesture Sidebar Overlay
 
-System overlay service that provides a persistent edge-swipe sidebar accessible from any app.
+Thin edge-detection overlay service that triggers the Compose dash rail from any app.
 
 ## Files
 
-- `LumoGestureSidebarService.kt` — `Service` with `TYPE_APPLICATION_OVERLAY` windows: thin edge handle (18dp) for swipe detection (26dp threshold), full-height rail with pinned apps, dismiss scrim, Ubuntu symbol button for app drawer
+- `LumoGestureSidebarService.kt` — `Service` with a single `TYPE_APPLICATION_OVERLAY` edge handle (18dp, left side). Detects swipe gestures and brings the launcher to the foreground with the dash rail visible.
+
+## Architecture
+
+There is only **one dash implementation** — the Compose `UbuntuTouchLauncherRail` in `LumoLauncherApp.kt`. This overlay service is purely an edge gesture detector. When a swipe is detected:
+
+1. Service calls `MainActivity.createDashIntent()` (START_PAGE_DASH = 2)
+2. MainActivity brings to foreground via `onNewIntent`
+3. `LumoLauncherApp` toggles `railVisible` in response to the navigation request
+
+This ensures the dash always has the same size, features (drag-and-drop reorder), and settings regardless of whether it was opened from within the launcher or from another app.
 
 ## Features
 
-- Edge swipe from left side reveals the dash rail overlay
-- Pinned/favorite apps displayed as squircle icons (52dp with 44dp inner icon)
-- Ubuntu symbol button at bottom opens the app drawer (via intent to MainActivity)
-- Tap outside rail to dismiss
+- Edge swipe from left side (26dp threshold) opens the dash rail
+- Blocked when device is keyguard-locked or Lumo lock screen is active (`LumoLockState.isLocked`)
 - Respects overlay permission (`SYSTEM_ALERT_WINDOW`)
-- Blocked when device is locked (`KeyguardManager.isKeyguardLocked`) or Lumo lock screen is active (`LumoLockState.isLocked`)
-- Auto-refreshes app list when notified
 - Restored on boot/package-replace by `LumoStartupReceiver` (when enabled in preferences)
 
 ## Known Issues / Bugs
 
-- Overlay rail width is fixed (68dp) and doesn't dynamically match the in-launcher dash settings
 - On some Android 14+ devices, overlay touches may be blocked by system security policies
 
 ## Plans
 
-- Match overlay rail width/icon size with launcher dash settings
-- Add quick-action buttons (e.g., flashlight, Wi-Fi toggle) to the overlay rail
+- Configurable edge handle width from settings
