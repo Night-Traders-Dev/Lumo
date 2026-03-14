@@ -68,8 +68,8 @@ data class LumoKeyboardStatus(
     val isSelected: Boolean = false,
 )
 
-private const val LUMO_INPUT_METHOD_ID = "dev.nighttraders.lumo.launcher/.input.LumoInputMethodService"
-private const val LUMO_INPUT_METHOD_CLASS = "dev.nighttraders.lumo.launcher/dev.nighttraders.lumo.launcher.input.LumoInputMethodService"
+private const val LUMO_INPUT_METHOD_ID = "dev.nighttraders.lumo.launcher/.keyboard.LumoInputMethodService"
+private const val LUMO_INPUT_METHOD_CLASS = "dev.nighttraders.lumo.launcher/dev.nighttraders.lumo.launcher.keyboard.LumoInputMethodService"
 
 @Composable
 fun rememberLumoKeyboardStatus(): State<LumoKeyboardStatus> {
@@ -983,17 +983,26 @@ private fun SettingSlider(
     steps: Int,
     onValueChange: (Int) -> Unit,
 ) {
+    // Keep a local preview while dragging — only persist on drag end
+    var localValue by remember(value) { mutableStateOf(value.toFloat()) }
+    val displayValue = localValue.toInt()
+
     Column {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Text(text = label, style = MaterialTheme.typography.bodyMedium, color = Color.White)
-            Text(text = valueLabel, style = MaterialTheme.typography.bodyMedium, color = Color(0xFFE95420))
+            Text(
+                text = valueLabel.replace(value.toString(), displayValue.toString()),
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color(0xFFE95420),
+            )
         }
         Slider(
-            value = value.toFloat(),
-            onValueChange = { onValueChange(it.toInt()) },
+            value = localValue,
+            onValueChange = { localValue = it },
+            onValueChangeFinished = { onValueChange(displayValue) },
             valueRange = range,
             steps = steps,
             modifier = Modifier.fillMaxWidth(),

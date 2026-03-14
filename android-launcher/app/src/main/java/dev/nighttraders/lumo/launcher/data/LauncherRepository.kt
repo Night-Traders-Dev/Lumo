@@ -24,6 +24,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import java.util.Locale
 
@@ -41,8 +42,14 @@ class LauncherRepository(private val context: Context) {
     private val activityManager = context.getSystemService(ActivityManager::class.java)
 
     /** Reactive recent app keys — updated by periodic polling or manual recording. */
-    private val _recentAppKeys = MutableStateFlow<List<String>>(emptyList())
+    private val _recentAppKeys = MutableStateFlow(loadSavedRecentKeys())
     val recentAppKeysFlow: StateFlow<List<String>> = _recentAppKeys.asStateFlow()
+
+    /** Seed recent keys from DataStore synchronously so there's no empty-list gap at startup. */
+    private fun loadSavedRecentKeys(): List<String> = runBlocking {
+        val raw = context.launcherPreferences.data.first()[LauncherPreferences.recentAppKeys].orEmpty()
+        if (raw.isBlank()) emptyList() else raw.split(RECENT_SEPARATOR)
+    }
 
     fun observeFavoriteKeys(): Flow<Set<String>> =
         context.launcherPreferences.data.map { preferences ->

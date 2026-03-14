@@ -4,6 +4,7 @@ import android.Manifest
 import android.app.role.RoleManager
 import android.content.Context
 import android.content.Intent
+import android.content.BroadcastReceiver
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.hardware.camera2.CameraManager
@@ -50,7 +51,13 @@ class MainActivity : ComponentActivity() {
     private val lockScreenSecurityHash = mutableStateOf("")
     private val lockScreenSecuritySalt = mutableStateOf("")
     private val isFlashlightOn = mutableStateOf(false)
+    private var torchCallback: CameraManager.TorchCallback? = null
     private val screenReceiver = LumoUnlockReceiver()
+    private val packageChangeReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            viewModel.refreshApps(force = true)
+        }
+    }
     private val requestRoleLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
             refreshDefaultHomeState()
@@ -68,6 +75,7 @@ class MainActivity : ComponentActivity() {
         configureSystemBars()
         refreshDefaultHomeState()
         registerScreenReceiver()
+        registerPackageChangeReceiver()
         registerFlashlightCallback()
         requestActivityRecognitionIfNeeded()
         loadSecurityState()
@@ -177,7 +185,7 @@ class MainActivity : ComponentActivity() {
                         }
                     },
                     onRefresh = {
-                        viewModel.refreshApps()
+                        viewModel.refreshApps(force = true)
                         viewModel.refreshNotifications()
                     },
                 )
@@ -197,7 +205,7 @@ class MainActivity : ComponentActivity() {
         configureSystemBars()
         refreshDefaultHomeState()
         refreshNotificationAccessState()
-        viewModel.refreshApps()
+        viewModel.refreshApps() // no-op unless first load; use force=true for explicit refresh
         viewModel.refreshNotifications()
         loadSecurityState()
         lifecycleScope.launch {
@@ -252,6 +260,21 @@ class MainActivity : ComponentActivity() {
     private fun parseRequestedPage(intent: Intent?): Int =
         intent?.getIntExtra(EXTRA_START_PAGE, START_PAGE_HOME) ?: START_PAGE_HOME
 
+    private fun registerPackageChangeReceiver() {
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_PACKAGE_ADDED)
+            addAction(Intent.ACTION_PACKAGE_REMOVED)
+            addAction(Intent.ACTION_PACKAGE_REPLACED)
+            addDataScheme("package")
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(packageChangeReceiver, filter, RECEIVER_EXPORTED)
+        } else {
+            @Suppress("DEPRECATION")
+            registerReceiver(packageChangeReceiver, filter)
+        }
+    }
+
     private fun registerScreenReceiver() {
         val filter = IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_OFF)
@@ -267,12 +290,27 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         runCatching { unregisterReceiver(screenReceiver) }
+        runCatching { unregisterReceiver(packageChangeReceiver) }
+        torchCallback?.let { cb ->
+            runCatching { getSystemService(CameraManager::class.java)?.unregisterTorchCallback(cb) }
+        }
         super.onDestroy()
+    }
+
+    /** Find the camera ID that has a flash unit, not just the first camera. */
+    private fun findFlashCameraId(): String? {
+        val cameraManager = getSystemService(CameraManager::class.java) ?: return null
+        return runCatching {
+            cameraManager.cameraIdList.firstOrNull { id ->
+                val characteristics = cameraManager.getCameraCharacteristics(id)
+                characteristics.get(android.hardware.camera2.CameraCharacteristics.FLASH_INFO_AVAILABLE) == true
+            }
+        }.getOrNull()
     }
 
     private fun toggleFlashlight() {
         val cameraManager = getSystemService(CameraManager::class.java) ?: return
-        val cameraId = runCatching { cameraManager.cameraIdList.firstOrNull() }.getOrNull() ?: return
+        val cameraId = findFlashCameraId() ?: return
         val newState = !isFlashlightOn.value
         runCatching { cameraManager.setTorchMode(cameraId, newState) }
             .onSuccess { isFlashlightOn.value = newState }
@@ -283,11 +321,13 @@ class MainActivity : ComponentActivity() {
 
     private fun registerFlashlightCallback() {
         val cameraManager = getSystemService(CameraManager::class.java) ?: return
-        cameraManager.registerTorchCallback(object : CameraManager.TorchCallback() {
+        val callback = object : CameraManager.TorchCallback() {
             override fun onTorchModeChanged(cameraId: String, enabled: Boolean) {
                 isFlashlightOn.value = enabled
             }
-        }, null)
+        }
+        torchCallback = callback
+        cameraManager.registerTorchCallback(callback, null)
     }
 
     private fun requestActivityRecognitionIfNeeded() {

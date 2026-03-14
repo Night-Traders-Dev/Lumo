@@ -68,7 +68,8 @@ class LumoNotificationListenerService : NotificationListenerService() {
 
     override fun onNotificationRemoved(sbn: StatusBarNotification) {
         super.onNotificationRemoved(sbn)
-        LauncherNotificationCenter.remove(sbn.key)
+        // System-side removal — don't suppress re-posts
+        LauncherNotificationCenter.remove(sbn.key, dismissedByUser = false)
     }
 
     /**
@@ -114,7 +115,7 @@ class LumoNotificationListenerService : NotificationListenerService() {
     }
 
     companion object {
-        private const val SYNC_INTERVAL_MS = 3_000L
+        private const val SYNC_INTERVAL_MS = 10_000L // 10s backstop — event callbacks handle real-time updates
         private var listenerInstance: LumoNotificationListenerService? = null
 
         fun requestRefresh() {
@@ -135,7 +136,7 @@ class LumoNotificationListenerService : NotificationListenerService() {
                 return runCatching {
                     pendingIntent.send()
                     listener.cancelNotification(sbn.key)
-                    LauncherNotificationCenter.remove(key)
+                    LauncherNotificationCenter.remove(key, dismissedByUser = true)
                     LauncherNotificationCenter.dismissHeadsUp(key)
                     true
                 }
@@ -152,7 +153,7 @@ class LumoNotificationListenerService : NotificationListenerService() {
                 )
                 listener.startActivity(launchIntent)
                 listener.cancelNotification(sbn.key)
-                LauncherNotificationCenter.remove(key)
+                LauncherNotificationCenter.remove(key, dismissedByUser = true)
                 LauncherNotificationCenter.dismissHeadsUp(key)
                 true
             }
@@ -166,7 +167,7 @@ class LumoNotificationListenerService : NotificationListenerService() {
 
             return runCatching {
                 listener.cancelNotification(sbn.key)
-                LauncherNotificationCenter.remove(key)
+                LauncherNotificationCenter.remove(key, dismissedByUser = true)
             }
         }
 
@@ -178,7 +179,7 @@ class LumoNotificationListenerService : NotificationListenerService() {
 
             return runCatching {
                 listener.snoozeNotification(sbn.key, durationMillis)
-                LauncherNotificationCenter.remove(key)
+                LauncherNotificationCenter.remove(key, dismissedByUser = true)
             }
         }
     }

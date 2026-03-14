@@ -32,6 +32,7 @@ import dev.nighttraders.lumo.launcher.data.LumoDebugLog
 import dev.nighttraders.lumo.launcher.lockscreen.LockScreenActivity
 import dev.nighttraders.lumo.launcher.ui.theme.LumoLauncherTheme
 import dev.nighttraders.lumo.launcher.ui.isLauncherDefault
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 class SettingsActivity : ComponentActivity() {
@@ -54,6 +55,7 @@ class SettingsActivity : ComponentActivity() {
     private val launcherSettings = mutableStateOf(LumoLauncherSettings())
     private val showDebugLog = mutableStateOf(false)
     private val showWallpaperPicker = mutableStateOf(false)
+    private var settingsCollectorJob: Job? = null
     private val pickImageLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
     ) { result ->
@@ -67,7 +69,6 @@ class SettingsActivity : ComponentActivity() {
         }
         lifecycleScope.launch {
             repository.updateSetting(LauncherPreferences.wallpaperPath, uri.toString())
-            loadLauncherSettings()
         }
     }
     private var lockScreenSecurityHash = ""
@@ -99,7 +100,6 @@ class SettingsActivity : ComponentActivity() {
                         onSelectWallpaper = { path ->
                             lifecycleScope.launch {
                                 repository.updateSetting(LauncherPreferences.wallpaperPath, path)
-                                loadLauncherSettings()
                             }
                         },
                         onPickCustomImage = {
@@ -190,7 +190,6 @@ class SettingsActivity : ComponentActivity() {
         val prefKey = androidx.datastore.preferences.core.intPreferencesKey(key)
         lifecycleScope.launch {
             repository.updateSetting(prefKey, value)
-            loadLauncherSettings()
         }
     }
 
@@ -198,12 +197,14 @@ class SettingsActivity : ComponentActivity() {
         val prefKey = androidx.datastore.preferences.core.booleanPreferencesKey(key)
         lifecycleScope.launch {
             repository.updateSetting(prefKey, value)
-            loadLauncherSettings()
         }
     }
 
     private fun loadLauncherSettings() {
-        lifecycleScope.launch {
+        // Only start ONE collector — subsequent calls are no-ops.
+        // The collector lives for the Activity lifecycle and auto-updates launcherSettings.
+        if (settingsCollectorJob?.isActive == true) return
+        settingsCollectorJob = lifecycleScope.launch {
             repository.observeLauncherSettings().collect { settings ->
                 launcherSettings.value = settings
             }

@@ -84,6 +84,13 @@ object LumoDebugLog {
         fix("AppDrawerBtn", "Ungated left edge gesture — rail now reveals from any screen, not just home")
         fix("BackGesture", "Removed LumoBackGestureService entirely — was unused accessibility service")
         fix("MultitaskCards", "Reduced card height to 320dp, added accent-tinted backgrounds")
+        fix("DashResize", "Dash rail randomly resized — settings flow used WhileSubscribed(5s) causing default-value flash on lifecycle restart; switched to SharingStarted.Eagerly")
+        fix("DashResize", "Rail width now auto-expands to fit icon size: max(railWidthDp, iconSizeDp + 16)")
+        fix("DashClip", "Content behind dash rail didn't shift — added animated railContentOffset padding so clock/content moves right when rail is visible")
+        fix("StaleRecents", "uiState used WhileSubscribed(5s) — entire UI reverted to defaults on lifecycle restart; switched to SharingStarted.Eagerly")
+        fix("StaleRecents", "Race condition: refreshApps() and refreshRecentApps() ran in parallel — recents resolved to empty because apps list wasn't loaded yet; now sequential")
+        fix("StaleRecents", "Seeded _recentAppKeys from DataStore at repository init so there's no empty-list gap at startup")
+        fix("AppDrawerBlur", "App drawer gradient was 0x99 (60%) opacity blocking blurred wallpaper — lowered to 0x33-0x44 (~20-27%) so gaussian blur shows through")
         i("Startup", "LumoDebugLog initialized — tracking ${_entries.value.size} known fixes")
     }
 }

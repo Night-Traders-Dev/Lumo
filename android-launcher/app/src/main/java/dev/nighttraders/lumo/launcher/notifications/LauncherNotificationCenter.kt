@@ -71,8 +71,15 @@ object LauncherNotificationCenter {
         }
     }
 
-    fun remove(key: String) {
-        dismissedKeys[key] = System.currentTimeMillis()
+    /**
+     * Remove a notification from the list. Only starts the re-post cooldown
+     * when [dismissedByUser] is true (i.e., the user explicitly dismissed it in Lumo UI).
+     * System-side removals (app update, notification rewrite) should NOT suppress re-posts.
+     */
+    fun remove(key: String, dismissedByUser: Boolean = false) {
+        if (dismissedByUser) {
+            dismissedKeys[key] = System.currentTimeMillis()
+        }
         _notifications.update { existing ->
             existing.filterNot { it.key == key }
         }
@@ -88,21 +95,30 @@ object LauncherNotificationCenter {
     }
 
     /**
-     * Deduplicate notifications that have the same package + title + message.
-     * Some apps post multiple notifications with different keys but identical content.
-     * Keeps the most recently posted one.
+     * Deduplicate notifications that are true duplicates (same key or same content
+     * posted within a short window). Uses key-based dedup first, then content-based
+     * only for notifications posted within 2 seconds of each other — so distinct
+     * alerts with the same text (e.g., multiple identical email subjects) are preserved.
      */
     private fun deduplicateByContent(
         notifications: List<LauncherNotification>,
     ): List<LauncherNotification> {
-        val seen = LinkedHashMap<String, LauncherNotification>()
-        // Process newest first so the LinkedHashMap keeps the most recent
+        val byKey = LinkedHashMap<String, LauncherNotification>()
+        // Key-based dedup first — always correct
         for (n in notifications.sortedByDescending { it.postedAt }) {
+            byKey.putIfAbsent(n.key, n)
+        }
+        // Content-based dedup only for near-simultaneous posts (within 2s)
+        val result = mutableListOf<LauncherNotification>()
+        val contentSeen = mutableMapOf<String, Long>() // fingerprint -> postedAt
+        for (n in byKey.values.sortedByDescending { it.postedAt }) {
             val fingerprint = "${n.packageName}|${n.title}|${n.message}"
-            if (!seen.containsKey(fingerprint)) {
-                seen[fingerprint] = n
+            val lastSeen = contentSeen[fingerprint]
+            if (lastSeen == null || kotlin.math.abs(lastSeen - n.postedAt) > 2_000L) {
+                result.add(n)
+                contentSeen[fingerprint] = n.postedAt
             }
         }
-        return seen.values.toList()
+        return result
     }
 }

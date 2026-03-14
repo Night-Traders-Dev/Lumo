@@ -412,34 +412,42 @@ private fun InfoGraphicRing(
     val dotColor = Color(0xFFB8AFBA)
     val activeDotColor = Color(0xFFE95420)
 
+    // Orbiting circles — each has its own speed, offset, orbit distance, and base size.
+    // Sizes vary sinusoidally as they rotate to create a 3D perspective effect:
+    // circles appear larger at the bottom (closer) and smaller at the top (farther).
+    data class OrbiterSpec(
+        val startDeg: Float,
+        val durationMs: Int,
+        val orbitOffset: Float, // added to base orbit radius
+        val baseRadius: Float,
+        val sizeVariation: Float, // multiplier range: size oscillates between base*(1-var) and base*(1+var)
+        val color: Color,
+    )
+
+    val orbiters = remember(activeDotColor, dotColor) {
+        listOf(
+            // Large prominent orbiters matching Ubuntu Touch scale
+            OrbiterSpec(0f, 18_000, 20f, 14f, 0.5f, activeDotColor.copy(alpha = 0.8f)),
+            OrbiterSpec(72f, 25_000, 26f, 10f, 0.45f, dotColor.copy(alpha = 0.55f)),
+            OrbiterSpec(144f, 32_000, 18f, 8f, 0.6f, activeDotColor.copy(alpha = 0.5f)),
+            OrbiterSpec(216f, 22_000, 30f, 16f, 0.5f, activeDotColor.copy(alpha = 0.6f)),
+            OrbiterSpec(288f, 30_000, 22f, 6f, 0.55f, dotColor.copy(alpha = 0.4f)),
+            OrbiterSpec(36f, 38_000, 34f, 12f, 0.45f, activeDotColor.copy(alpha = 0.35f)),
+        )
+    }
+
     val infiniteTransition = rememberInfiniteTransition(label = "orbit")
-    val orbit1 by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 20_000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart,
-        ),
-        label = "orbit1",
-    )
-    val orbit2 by infiniteTransition.animateFloat(
-        initialValue = 120f,
-        targetValue = 480f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 28_000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart,
-        ),
-        label = "orbit2",
-    )
-    val orbit3 by infiniteTransition.animateFloat(
-        initialValue = 240f,
-        targetValue = 600f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 35_000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart,
-        ),
-        label = "orbit3",
-    )
+    val orbitAngles = orbiters.mapIndexed { i, spec ->
+        infiniteTransition.animateFloat(
+            initialValue = spec.startDeg,
+            targetValue = spec.startDeg + 360f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = spec.durationMs, easing = LinearEasing),
+                repeatMode = RepeatMode.Restart,
+            ),
+            label = "orbit$i",
+        )
+    }
 
     Canvas(modifier = modifier) {
         val centerX = size.width / 2f
@@ -499,23 +507,32 @@ private fun InfoGraphicRing(
             )
         }
 
-        val orbitRadius = radius + 18f
-        val orbiters = listOf(
-            Triple(orbit1, 4.5f, activeDotColor.copy(alpha = 0.7f)),
-            Triple(orbit2, 3.5f, dotColor.copy(alpha = 0.5f)),
-            Triple(orbit3, 3f, activeDotColor.copy(alpha = 0.4f)),
-        )
-        for ((angleDeg, dotRadius, color) in orbiters) {
+        // Draw orbiting circles with 3D perspective size variation
+        orbiters.forEachIndexed { i, spec ->
+            val angleDeg = orbitAngles[i].value
             val angle = Math.toRadians(angleDeg.toDouble() - 90.0)
-            val ox = centerX + orbitRadius * cos(angle).toFloat()
-            val oy = centerY + orbitRadius * sin(angle).toFloat()
+            val orbitR = radius + spec.orbitOffset
+            val ox = centerX + orbitR * cos(angle).toFloat()
+            val oy = centerY + orbitR * sin(angle).toFloat()
+
+            // Size oscillates with position: larger at bottom (sin=1), smaller at top (sin=-1)
+            val perspectiveFactor = sin(angle).toFloat() // -1 at top, +1 at bottom
+            val sizeMult = 1f + spec.sizeVariation * perspectiveFactor
+            val dotRadius = spec.baseRadius * sizeMult
+
+            // Alpha also varies slightly — closer = more opaque
+            val alphaBoost = 1f + 0.3f * perspectiveFactor
+            val drawColor = spec.color.copy(alpha = (spec.color.alpha * alphaBoost).coerceIn(0f, 1f))
+
+            // Glow
             drawCircle(
-                color = color.copy(alpha = color.alpha * 0.3f),
+                color = drawColor.copy(alpha = drawColor.alpha * 0.25f),
                 radius = dotRadius * 2.5f,
                 center = Offset(ox, oy),
             )
+            // Core
             drawCircle(
-                color = color,
+                color = drawColor,
                 radius = dotRadius,
                 center = Offset(ox, oy),
             )

@@ -82,9 +82,10 @@ class LockScreenActivity : ComponentActivity() {
     }
 
     private fun attemptUnlock() {
-        LumoLockState.unlock()
         val keyguardManager = getSystemService(KeyguardManager::class.java)
         if (keyguardManager == null || !keyguardManager.isDeviceLocked) {
+            // No system keyguard active — safe to unlock immediately
+            LumoLockState.unlock()
             LumoLockScreenCompanionService.dismissWakeSurface(this)
             finish()
             return
@@ -92,8 +93,18 @@ class LockScreenActivity : ComponentActivity() {
 
         keyguardManager.requestDismissKeyguard(this, object : KeyguardManager.KeyguardDismissCallback() {
             override fun onDismissSucceeded() {
+                // Only mark unlocked AFTER the system confirms dismissal
+                LumoLockState.unlock()
                 LumoLockScreenCompanionService.dismissWakeSurface(this@LockScreenActivity)
                 finish()
+            }
+
+            override fun onDismissCancelled() {
+                // System refused — keep lock state set
+            }
+
+            override fun onDismissError() {
+                // System error — keep lock state set
             }
         })
     }

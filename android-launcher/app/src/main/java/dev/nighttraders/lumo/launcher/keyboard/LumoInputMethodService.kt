@@ -71,6 +71,9 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
 
     private val wordEngine by lazy { KeyboardWordEngine.get(applicationContext) }
 
+    private val suggestionHandler = Handler(Looper.getMainLooper())
+    private var pendingSuggestionRunnable: Runnable? = null
+
     private val repeatHandler = Handler(Looper.getMainLooper())
     private var backspaceRepeating = false
     private val backspaceRepeatRunnable = object : Runnable {
@@ -592,9 +595,16 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
             return
         }
 
-        lastSuggestionRequestWord = currentWord
-        spellCheckerSession?.getSuggestions(TextInfo(currentWord), 4)
-        spellCheckerSession?.getSentenceSuggestions(arrayOf(TextInfo(currentWord)), 4)
+        // Debounce spell-checker requests — wait 80ms after last keystroke
+        pendingSuggestionRunnable?.let { suggestionHandler.removeCallbacks(it) }
+        val word = currentWord
+        pendingSuggestionRunnable = Runnable {
+            if (currentWord == word) {
+                lastSuggestionRequestWord = word
+                spellCheckerSession?.getSentenceSuggestions(arrayOf(TextInfo(word)), 4)
+            }
+        }
+        suggestionHandler.postDelayed(pendingSuggestionRunnable!!, 80L)
         refreshSuggestionStrip()
     }
 

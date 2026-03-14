@@ -30,6 +30,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     private val repository = LauncherRepository(application.applicationContext)
     private val loading = MutableStateFlow(true)
     private val apps = MutableStateFlow<List<LaunchableApp>>(emptyList())
+    private var appsLoadedOnce = false
     private val favoriteKeys = repository.observeFavoriteKeys()
     private val recentAppKeys = repository.recentAppKeysFlow
     private val defaultHome = MutableStateFlow(false)
@@ -57,7 +58,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         state.copy(recentAppKeys = recentKeys)
     }.stateIn(
         scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5_000),
+        started = SharingStarted.Eagerly,
         initialValue = LauncherUiState(),
     )
 
@@ -76,19 +77,33 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     init {
         LauncherNotificationCenter.setAccessEnabled(notificationAccess.value)
-        refreshApps()
         refreshNotifications()
-        refreshRecentApps()
-        startPeriodicRefresh()
-    }
-
-    fun refreshApps() {
+        // Load apps first, THEN recents — recents resolution needs the apps list populated
         viewModelScope.launch {
             loading.value = true
             val installedApps = repository.loadApps()
             repository.seedFavoritesIfEmpty(installedApps)
             apps.value = installedApps
             loading.value = false
+            // Now that apps are loaded, resolve recent app keys
+            launch(Dispatchers.IO) { repository.refreshRecentApps() }
+        }
+        startPeriodicRefresh()
+    }
+
+    /**
+     * Reload the installed app list. If [force] is false and apps have already been loaded,
+     * this is a no-op — avoids expensive icon re-rasterization on every Activity resume.
+     */
+    fun refreshApps(force: Boolean = false) {
+        if (appsLoadedOnce && !force) return
+        viewModelScope.launch {
+            loading.value = true
+            val installedApps = repository.loadApps()
+            repository.seedFavoritesIfEmpty(installedApps)
+            apps.value = installedApps
+            loading.value = false
+            appsLoadedOnce = true
         }
     }
 
@@ -195,7 +210,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     }
 
     companion object {
-        private const val RECENT_APPS_REFRESH_MS = 5_000L
+        private const val RECENT_APPS_REFRESH_MS = 15_000L // 15s backstop — events handle most updates
 
         val Factory: ViewModelProvider.Factory = viewModelFactory {
             initializer {

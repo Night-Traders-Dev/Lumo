@@ -2285,9 +2285,9 @@ private fun AppsScopePage(
             .background(
                 brush = Brush.verticalGradient(
                     colors = listOf(
-                        Color(0x990C0A10),
-                        Color(0x991A0816),
-                        Color(0x992C001E),
+                        Color(0x330C0A10),
+                        Color(0x441A0816),
+                        Color(0x442C001E),
                     ),
                 ),
             )
