@@ -56,6 +56,10 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
     private var swipeStartX = 0f
     private var swipeStartY = 0f
 
+    private var spaceCursorMode = false
+    private var spaceTouchStartX = 0f
+    private var spaceCursorAccumulator = 0f
+
     private val wordEngine by lazy { KeyboardWordEngine.get(applicationContext) }
 
     override fun onCreate() {
@@ -263,7 +267,7 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
                 listOf(
                     actionKey("?123", weight = 1.3f, highlighted = symbolMode) { openPrimarySymbols() },
                     textKey(","),
-                    actionKey("Space", weight = 4.2f) { commitSpace() },
+                    spaceKey(weight = 4.2f),
                     textKey("."),
                     actionKey("Enter", weight = 1.6f) { handleEnter() },
                 ),
@@ -279,7 +283,7 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
                 listOf(
                     actionKey("ABC", weight = 1.2f) { closeSymbols() },
                     actionKey("#+=", weight = 1.2f, highlighted = alternateSymbolMode) { openAlternateSymbols() },
-                    actionKey("Space", weight = 3.8f) { commitSpace() },
+                    spaceKey(weight = 3.8f),
                     textKey("."),
                     actionKey("Enter", weight = 1.6f) { handleEnter() },
                 ),
@@ -295,7 +299,7 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
                 listOf(
                     actionKey("ABC", weight = 1.2f) { closeSymbols() },
                     actionKey("?123", weight = 1.2f, highlighted = true) { openPrimarySymbols() },
-                    actionKey("Space", weight = 3.8f) { commitSpace() },
+                    spaceKey(weight = 3.8f),
                     textKey("/"),
                     actionKey("Enter", weight = 1.6f) { handleEnter() },
                 ),
@@ -360,6 +364,8 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
                     displayValue = spec.value,
                 )
                 setOnTouchListener(LetterSwipeTouchListener(spec))
+            } else if (spec.isSpaceKey) {
+                setOnTouchListener(SpaceCursorTouchListener())
             } else {
                 setOnClickListener { handleKey(spec) }
             }
@@ -852,6 +858,7 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
         val isSpecial: Boolean,
         val weight: Float,
         val highlighted: Boolean = false,
+        val isSpaceKey: Boolean = false,
         val action: (() -> Unit)? = null,
     ) {
         val isLetterKey: Boolean
@@ -893,4 +900,66 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
             highlighted = highlighted,
             action = action,
         )
+
+    private fun spaceKey(weight: Float): KeySpec =
+        KeySpec(
+            value = "Space",
+            isSpecial = true,
+            weight = weight,
+            isSpaceKey = true,
+        )
+
+    private fun moveCursor(direction: Int) {
+        val keyCode = if (direction < 0) KeyEvent.KEYCODE_DPAD_LEFT else KeyEvent.KEYCODE_DPAD_RIGHT
+        currentInputConnection?.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, keyCode))
+        currentInputConnection?.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, keyCode))
+    }
+
+    private inner class SpaceCursorTouchListener : View.OnTouchListener {
+        private val cursorThreshold = dp(18)
+
+        override fun onTouch(view: View, event: MotionEvent): Boolean =
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    spaceCursorMode = false
+                    spaceTouchStartX = event.rawX
+                    spaceCursorAccumulator = 0f
+                    true
+                }
+
+                MotionEvent.ACTION_MOVE -> {
+                    val deltaX = event.rawX - spaceTouchStartX
+                    if (!spaceCursorMode && abs(deltaX) > cursorThreshold) {
+                        spaceCursorMode = true
+                        spaceCursorAccumulator = 0f
+                    }
+                    if (spaceCursorMode) {
+                        spaceCursorAccumulator += event.rawX - spaceTouchStartX
+                        spaceTouchStartX = event.rawX
+                        while (abs(spaceCursorAccumulator) >= cursorThreshold) {
+                            val direction = if (spaceCursorAccumulator > 0) 1 else -1
+                            moveCursor(direction)
+                            performKeyHaptic()
+                            spaceCursorAccumulator -= direction * cursorThreshold
+                        }
+                    }
+                    true
+                }
+
+                MotionEvent.ACTION_UP -> {
+                    if (!spaceCursorMode) {
+                        commitSpace()
+                    }
+                    spaceCursorMode = false
+                    true
+                }
+
+                MotionEvent.ACTION_CANCEL -> {
+                    spaceCursorMode = false
+                    true
+                }
+
+                else -> false
+            }
+    }
 }

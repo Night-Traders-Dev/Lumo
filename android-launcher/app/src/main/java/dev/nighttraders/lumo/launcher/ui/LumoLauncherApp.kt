@@ -66,15 +66,23 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Outline
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlin.math.abs
+import kotlin.math.pow
+import kotlin.math.sign
 import dev.nighttraders.lumo.launcher.data.LaunchableApp
 import dev.nighttraders.lumo.launcher.notifications.LauncherNotification
 import kotlinx.coroutines.delay
@@ -1243,7 +1251,7 @@ private fun AppsScopePage(
         } else {
             LazyVerticalGrid(
                 modifier = Modifier.fillMaxSize(),
-                columns = GridCells.Adaptive(minSize = 84.dp),
+                columns = GridCells.Fixed(4),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(18.dp),
             ) {
@@ -1339,6 +1347,7 @@ private fun MinimalStatusAction(
     label: String?,
     onClick: () -> Unit,
 ) {
+    val indicatorColor = Color(0xFFDFDBD2) // Ubuntu Touch warm gray
     Row(
         modifier = Modifier.clickable(onClick = onClick),
         horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -1347,14 +1356,14 @@ private fun MinimalStatusAction(
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = Color.White,
+            tint = indicatorColor,
             modifier = Modifier.size(16.dp),
         )
         if (label != null) {
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelSmall,
-                color = Color.White,
+                color = indicatorColor,
             )
         }
     }
@@ -1365,11 +1374,15 @@ private fun AppIcon(
     app: LaunchableApp,
     size: Dp,
 ) {
+    val squircle = remember(size) { SquircleShape() }
+
     if (app.icon != null) {
         Image(
             bitmap = app.icon.asImageBitmap(),
             contentDescription = null,
-            modifier = Modifier.size(size),
+            modifier = Modifier
+                .size(size)
+                .clip(squircle),
         )
     } else {
         val placeholderColor = remember(app.accentSeed) {
@@ -1379,7 +1392,7 @@ private fun AppIcon(
         Box(
             modifier = Modifier
                 .size(size)
-                .clip(RoundedCornerShape(size / 3))
+                .clip(squircle)
                 .background(placeholderColor),
             contentAlignment = Alignment.Center,
         ) {
@@ -1389,5 +1402,31 @@ private fun AppIcon(
                 color = Color.White,
             )
         }
+    }
+}
+
+private class SquircleShape(private val exponent: Float = 4f) : Shape {
+    override fun createOutline(
+        size: androidx.compose.ui.geometry.Size,
+        layoutDirection: LayoutDirection,
+        density: Density,
+    ): Outline {
+        val path = Path()
+        val halfW = size.width / 2f
+        val halfH = size.height / 2f
+        val n = exponent
+        val steps = 180
+
+        path.moveTo(halfW + halfW, halfH)
+        for (i in 1..steps) {
+            val angle = 2.0 * Math.PI * i / steps
+            val cosA = kotlin.math.cos(angle).toFloat()
+            val sinA = kotlin.math.sin(angle).toFloat()
+            val x = halfW + halfW * sign(cosA) * abs(cosA).pow(2f / n)
+            val y = halfH + halfH * sign(sinA) * abs(sinA).pow(2f / n)
+            path.lineTo(x, y)
+        }
+        path.close()
+        return Outline.Generic(path)
     }
 }
