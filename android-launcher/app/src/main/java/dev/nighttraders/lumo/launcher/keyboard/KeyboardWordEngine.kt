@@ -8,10 +8,25 @@ import kotlin.math.min
 
 internal class KeyboardWordEngine private constructor(
     private val words: List<DictionaryWord>,
-    private val knownWords: Set<String>,
-    private val prefixBuckets: Map<String, List<DictionaryWord>>,
-    private val firstLetterBuckets: Map<Char, List<DictionaryWord>>,
+    private val knownWords: MutableSet<String>,
+    private val prefixBuckets: MutableMap<String, MutableList<DictionaryWord>>,
+    private val firstLetterBuckets: MutableMap<Char, MutableList<DictionaryWord>>,
 ) {
+    /** Hot-add a learned word so it's immediately available for suggestions. */
+    fun addLearnedWord(rawWord: String) {
+        val word = rawWord.trim().lowercase(Locale.getDefault())
+            .filter { it.isLetter() || it == '\'' }
+        if (word.length < 2 || word in knownWords) return
+        knownWords.add(word)
+        val dw = DictionaryWord(value = word, rank = 1) // highest priority
+        (1..min(3, word.length)).forEach { prefixLen ->
+            prefixBuckets.getOrPut(word.take(prefixLen), ::mutableListOf).add(0, dw)
+        }
+        word.firstOrNull()?.let { ch ->
+            firstLetterBuckets.getOrPut(ch, ::mutableListOf).add(0, dw)
+        }
+    }
+
     fun predictiveSuggestions(rawInput: String, maxResults: Int = 4): List<String> {
         val input = normalize(rawInput)
         if (input.isBlank()) {
@@ -162,7 +177,7 @@ internal class KeyboardWordEngine private constructor(
             return Int.MAX_VALUE
         }
 
-        var score = distance * 14 + abs(candidate.value.length - trace.length) * 2 + frequencyPenalty(candidate.rank)
+        var score = distance * 12 + abs(candidate.value.length - trace.length) * 2 + frequencyPenalty(candidate.rank)
 
         // First/last letter matching is very important for swipe
         val firstMatch = candidate.value.firstOrNull() == trace.firstOrNull()
@@ -170,7 +185,9 @@ internal class KeyboardWordEngine private constructor(
         if (!firstMatch && !firstAdjacent) {
             score += 50
         } else if (firstAdjacent) {
-            score += 15
+            score += 10
+        } else {
+            score -= 4 // reward exact first letter match
         }
 
         val lastMatch = candidate.value.lastOrNull() == trace.lastOrNull()
@@ -178,21 +195,56 @@ internal class KeyboardWordEngine private constructor(
         if (!lastMatch && !lastAdjacent) {
             score += 25
         } else if (lastAdjacent) {
-            score += 8
+            score += 6
+        } else {
+            score -= 4 // reward exact last letter match
         }
 
         // Check if the candidate's key signature is a subsequence of the trace
-        if (!isSubsequence(signature, trace)) {
-            // Not a strict fail — penalize but allow near-misses
+        val collapsed = collapseRepeats(candidate.value)
+        if (isSubsequence(collapsed, trace)) {
+            // Strong reward — all key letters appear in order within the trace
+            score -= 10
+        } else if (!isSubsequence(signature, trace)) {
             score += 16
         }
 
-        // Reward when trace contains the word's key path in order
-        if (isSubsequence(collapseRepeats(candidate.value), trace)) {
-            score -= 6
+        // Check how many of the candidate's interior letters appear as adjacent keys in the trace
+        val interiorMatchRatio = interiorKeyMatchRatio(candidate.value, trace)
+        score -= (interiorMatchRatio * 8).toInt()
+
+        // Length similarity bonus — prefer candidates close in length to the word
+        if (abs(candidate.value.length - trace.length) <= 1) {
+            score -= 3
         }
 
         return score
+    }
+
+    /**
+     * Calculates what fraction of a word's interior letters (not first/last)
+     * appear in the trace, either as exact matches or adjacent keys.
+     * This helps swipe accuracy by rewarding words whose key path
+     * aligns well with the actual trace.
+     */
+    private fun interiorKeyMatchRatio(word: String, trace: String): Float {
+        if (word.length <= 2) return 1f
+        val interior = word.substring(1, word.length - 1)
+        if (interior.isEmpty()) return 1f
+        var matched = 0
+        var traceIdx = 1 // skip first char
+        for (ch in interior) {
+            var found = false
+            for (i in traceIdx until trace.length) {
+                if (trace[i] == ch || isAdjacentKey(trace[i], ch)) {
+                    traceIdx = i + 1
+                    found = true
+                    break
+                }
+            }
+            if (found) matched++
+        }
+        return matched.toFloat() / interior.length
     }
 
     private fun isAdjacentKey(a: Char?, b: Char?): Boolean {
@@ -302,7 +354,16 @@ internal class KeyboardWordEngine private constructor(
                 }
             }
 
+        fun reload(context: Context): KeyboardWordEngine =
+            synchronized(this) {
+                load(context.applicationContext).also { engine ->
+                    instance = engine
+                }
+            }
+
         private fun load(context: Context): KeyboardWordEngine {
+            val learnedWords = LearnedWordStore.get(context).allWords()
+
             val commonWords = COMMON_WORDS
                 .lineSequence()
                 .map(String::trim)
@@ -310,7 +371,9 @@ internal class KeyboardWordEngine private constructor(
                 .map { word -> word.lowercase(Locale.getDefault()) }
                 .toList()
 
+            // Learned words get highest priority (inserted first)
             val mergedWords = linkedSetOf<String>()
+            mergedWords += learnedWords
             mergedWords += commonWords
             mergedWords += loadAssetWords(context)
             mergedWords += loadUserDictionaryWords(context)
@@ -337,7 +400,7 @@ internal class KeyboardWordEngine private constructor(
 
             return KeyboardWordEngine(
                 words = dictionaryWords,
-                knownWords = dictionaryWords.mapTo(linkedSetOf()) { word -> word.value },
+                knownWords = dictionaryWords.mapTo(linkedSetOf()) { word -> word.value }.toMutableSet(),
                 prefixBuckets = prefixBuckets,
                 firstLetterBuckets = firstLetterBuckets,
             )

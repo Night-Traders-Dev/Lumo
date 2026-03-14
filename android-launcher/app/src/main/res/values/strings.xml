@@ -20,4 +20,6 @@
     <string name="lock_screen_wake_notification_title">Lumo lock screen ready</string>
     <string name="lock_screen_wake_notification_text">Tap to open the Lumo lock screen surface.</string>
     <string name="lock_screen_companion_unavailable_message">Android 14 and newer block Lumo\'s wake companion here. Opening the lock screen preview instead.</string>
+    <string name="accessibility_service_label">Lumo Lock Screen Guard</string>
+    <string name="accessibility_service_description">Prevents the notification shade from being pulled down while the Lumo lock screen is active. This keeps your device secure by blocking access to quick settings and notifications when locked.</string>
 </resources>

@@ -1,5 +1,7 @@
 package dev.nighttraders.lumo.launcher.keyboard
 
+import android.content.Context
+import android.content.SharedPreferences
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Rect
@@ -26,9 +28,11 @@ import android.view.textservice.TextInfo
 import android.view.textservice.TextServicesManager
 import android.widget.Button
 import android.widget.FrameLayout
+import android.widget.GridLayout
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.PopupWindow
+import android.widget.ScrollView
 import android.widget.TextView
 import android.os.Handler
 import android.os.Looper
@@ -43,8 +47,18 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
     private var alternateSymbolMode = false
     private var numpadMode = false
     private var clipboardMode = false
+    private var emojiMode = false
+    private var emojiCategoryIndex = 0
 
     private var spellCheckerSession: SpellCheckerSession? = null
+
+    // Language support
+    private var currentLanguage = KeyboardLanguage.EN_US
+    private lateinit var prefs: SharedPreferences
+
+    // Learned words
+    private val learnedWordStore by lazy { LearnedWordStore.get(applicationContext) }
+    private val recentEmojis = mutableListOf<String>()
 
     private lateinit var rootView: SwipeTrailLinearLayout
     private lateinit var suggestionStrip: LinearLayout
@@ -90,6 +104,11 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
 
     override fun onCreate() {
         super.onCreate()
+        prefs = getSharedPreferences("lumo_keyboard", Context.MODE_PRIVATE)
+        currentLanguage = KeyboardLanguage.entries.firstOrNull {
+            it.name == prefs.getString("language", KeyboardLanguage.EN_US.name)
+        } ?: KeyboardLanguage.EN_US
+        loadRecentEmojis()
         val textServicesManager = getSystemService(TextServicesManager::class.java)
         spellCheckerSession = textServicesManager?.newSpellCheckerSession(null, null, this, true)
     }
@@ -280,6 +299,10 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
     }
 
     private fun rebuildKeyboardRows() {
+        if (emojiMode) {
+            rebuildEmojiView()
+            return
+        }
         keysContainer.removeAllViews()
         letterKeyTargets.clear()
 
@@ -322,25 +345,29 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
                 ),
             )
 
-            !symbolMode -> listOf(
-                listOf("q", "w", "e", "r", "t", "y", "u", "i", "o", "p").map(::letterKey),
-                listOf("a", "s", "d", "f", "g", "h", "j", "k", "l").map(::letterKey),
-                buildList {
-                    add(actionKey(if (isShiftActive()) "SHIFT" else "Shift", weight = 1.4f, highlighted = isShiftActive()) {
-                        toggleShift()
-                    })
-                    addAll(listOf("z", "x", "c", "v", "b", "n", "m").map(::letterKey))
-                    add(backspaceKey())
-                },
+            !symbolMode -> {
+                val rows = currentLanguage.letterRows
                 listOf(
-                    actionKey("?123", weight = 1.2f, highlighted = symbolMode) { openPrimarySymbols() },
-                    actionKey("Clip", weight = 0.8f) { clipboardMode = true; rebuildKeyboardRows() },
-                    spaceKey(weight = 3.8f),
-                    textKey(","),
-                    textKey("."),
-                    actionKey("Enter", weight = 1.6f) { handleEnter() },
-                ),
-            )
+                    rows[0].map(::letterKey),
+                    rows[1].map(::letterKey),
+                    buildList {
+                        add(actionKey(if (isShiftActive()) "SHIFT" else "Shift", weight = 1.4f, highlighted = isShiftActive()) {
+                            toggleShift()
+                        })
+                        addAll(rows[2].map(::letterKey))
+                        add(backspaceKey())
+                    },
+                    listOf(
+                        actionKey("?123", weight = 1.2f, highlighted = symbolMode) { openPrimarySymbols() },
+                        actionKey("\uD83D\uDE00", weight = 0.8f) { openEmojiPicker() },
+                        actionKey(currentLanguage.flag, weight = 0.8f) { cycleLanguage() },
+                        spaceKey(weight = 3.0f),
+                        textKey(","),
+                        textKey("."),
+                        actionKey("Enter", weight = 1.6f) { handleEnter() },
+                    ),
+                )
+            }
 
             !alternateSymbolMode -> listOf(
                 listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "0").map(::textKey),
@@ -511,14 +538,25 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
     private fun commitSpace() {
         performKeyHaptic()
         applyAutoCorrectionIfNeeded()
+        learnCurrentWord()
         commitText(" ")
         updateSuggestions()
     }
 
     private fun commitDelimiter(delimiter: String) {
         applyAutoCorrectionIfNeeded()
+        learnCurrentWord()
         commitText(delimiter)
         updateSuggestions()
+    }
+
+    /** Learn the current word before cursor if it's substantial enough. */
+    private fun learnCurrentWord() {
+        val word = currentWordBeforeCursor()
+        if (word.length >= 2 && !word.all(Char::isDigit)) {
+            learnedWordStore.learn(word)
+            wordEngine.addLearnedWord(word)
+        }
     }
 
     private fun applyAutoCorrectionIfNeeded() {
@@ -542,6 +580,7 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
     private fun handleEnter() {
         performKeyHaptic()
         applyAutoCorrectionIfNeeded()
+        learnCurrentWord()
 
         val editorInfo = currentInputEditorInfo
         if (editorInfo != null &&
@@ -998,7 +1037,7 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
     }
 
     private fun interpolateKeys(fromX: Float, fromY: Float, toX: Float, toY: Float) {
-        val steps = 4
+        val steps = 6
         for (step in 1 until steps) {
             val fraction = step.toFloat() / steps
             val midX = fromX + (toX - fromX) * fraction
@@ -1220,8 +1259,179 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
         val displayValue: String,
     )
 
+    // ── Emoji Picker ──────────────────────────────────────────────────
+
+    private fun openEmojiPicker() {
+        emojiMode = true
+        emojiCategoryIndex = 0
+        rebuildEmojiView()
+    }
+
+    private fun closeEmojiPicker() {
+        emojiMode = false
+        updateAutoCapitalization()
+        rebuildKeyboardRows()
+        refreshSuggestionStrip()
+    }
+
+    private fun rebuildEmojiView() {
+        keysContainer.removeAllViews()
+        letterKeyTargets.clear()
+        suggestionStrip.removeAllViews()
+
+        // Category tabs in the suggestion strip
+        val hasRecent = recentEmojis.isNotEmpty()
+        if (hasRecent) {
+            suggestionStrip.addView(
+                createEmojiCategoryTab(EmojiData.RECENT_ICON, EmojiData.RECENT_LABEL, -1),
+            )
+        }
+        EmojiData.CATEGORIES.forEachIndexed { index, category ->
+            suggestionStrip.addView(
+                createEmojiCategoryTab(category.icon, category.label, index),
+            )
+        }
+
+        // Emoji grid
+        val emojis = if (emojiCategoryIndex < 0) {
+            recentEmojis
+        } else {
+            EmojiData.CATEGORIES.getOrNull(emojiCategoryIndex)?.emojis ?: emptyList()
+        }
+
+        val scrollView = ScrollView(this).apply {
+            isVerticalScrollBarEnabled = true
+            overScrollMode = View.OVER_SCROLL_ALWAYS
+        }
+
+        val columns = 8
+        val grid = GridLayout(this).apply {
+            columnCount = columns
+            setPadding(dp(4), dp(4), dp(4), dp(4))
+        }
+
+        emojis.forEach { emoji ->
+            val btn = Button(this).apply {
+                text = emoji
+                isAllCaps = false
+                textSize = 24f
+                gravity = Gravity.CENTER
+                minWidth = dp(44)
+                minHeight = dp(44)
+                minimumWidth = dp(44)
+                minimumHeight = dp(44)
+                stateListAnimator = null
+                elevation = 0f
+                background = GradientDrawable().apply {
+                    cornerRadius = dp(6).toFloat()
+                    setColor(Color.TRANSPARENT)
+                }
+                backgroundTintList = null
+                setPadding(dp(2), dp(2), dp(2), dp(2))
+                layoutParams = GridLayout.LayoutParams().apply {
+                    width = 0
+                    height = GridLayout.LayoutParams.WRAP_CONTENT
+                    columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f)
+                }
+                setOnClickListener {
+                    performKeyHaptic()
+                    commitText(emoji)
+                    addRecentEmoji(emoji)
+                }
+            }
+            grid.addView(btn)
+        }
+
+        scrollView.addView(grid)
+
+        // Constrain height so keyboard doesn't grow unbounded
+        keysContainer.addView(
+            scrollView,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(220),
+            ),
+        )
+
+        // Bottom row: ABC, backspace, Enter
+        keysContainer.addView(
+            createMixedRow(
+                listOf(
+                    actionKey("ABC", weight = 1.2f) { closeEmojiPicker() },
+                    backspaceKey(weight = 1f),
+                    spaceKey(weight = 2.5f),
+                    actionKey("Enter", weight = 1.6f) { handleEnter() },
+                ),
+            ),
+        )
+    }
+
+    private fun createEmojiCategoryTab(icon: String, label: String, index: Int): View =
+        Button(this).apply {
+            text = icon
+            isAllCaps = false
+            textSize = 18f
+            gravity = Gravity.CENTER
+            minHeight = dp(38)
+            minimumHeight = dp(38)
+            stateListAnimator = null
+            elevation = 0f
+            val isSelected = index == emojiCategoryIndex
+            background = GradientDrawable().apply {
+                cornerRadius = dp(8).toFloat()
+                setColor(if (isSelected) Color.parseColor("#E95420") else Color.parseColor("#444444"))
+            }
+            backgroundTintList = null
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            ).apply {
+                marginEnd = dp(3)
+            }
+            setPadding(dp(10), dp(4), dp(10), dp(4))
+            setOnClickListener {
+                performKeyHaptic()
+                emojiCategoryIndex = index
+                rebuildEmojiView()
+            }
+        }
+
+    private fun addRecentEmoji(emoji: String) {
+        recentEmojis.remove(emoji)
+        recentEmojis.add(0, emoji)
+        if (recentEmojis.size > 32) recentEmojis.removeAt(recentEmojis.lastIndex)
+        saveRecentEmojis()
+    }
+
+    private fun loadRecentEmojis() {
+        recentEmojis.clear()
+        val saved = prefs.getString("recent_emojis", null)
+        if (saved != null) {
+            saved.split("|")
+                .filter(String::isNotBlank)
+                .let(recentEmojis::addAll)
+        }
+    }
+
+    private fun saveRecentEmojis() {
+        val joined = recentEmojis.joinToString("|")
+        prefs.edit().putString("recent_emojis", joined).apply()
+    }
+
+    // -- Language Switching ---
+
+    private fun cycleLanguage() {
+        performKeyHaptic()
+        val languages = KeyboardLanguage.entries
+        val nextIndex = (languages.indexOf(currentLanguage) + 1) % languages.size
+        currentLanguage = languages[nextIndex]
+        prefs.edit().putString("language", currentLanguage.name).apply()
+        rebuildKeyboardRows()
+        refreshSuggestionStrip()
+    }
+
     private companion object {
-        val AUTO_CAP_TRAILING_CHARACTERS = setOf('”', '\'', ')', ']', '}', '»', '”')
+        val AUTO_CAP_TRAILING_CHARACTERS = setOf('"', '\'', ')', ']', '}', '»', '"')
         const val BACKSPACE_REPEAT_DELAY_MS = 400L
         const val BACKSPACE_REPEAT_INTERVAL_MS = 50L
         const val LONG_PRESS_DELAY_MS = 350L
@@ -1367,4 +1577,69 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
                 else -> false
             }
     }
+}
+
+/**
+ * Supported keyboard languages. Each defines its letter layout rows,
+ * display name, and flag emoji for the language switch button.
+ */
+internal enum class KeyboardLanguage(
+    val displayName: String,
+    val flag: String,
+    val letterRows: List<List<String>>,
+) {
+    EN_US(
+        displayName = "English",
+        flag = "EN",
+        letterRows = listOf(
+            listOf("q", "w", "e", "r", "t", "y", "u", "i", "o", "p"),
+            listOf("a", "s", "d", "f", "g", "h", "j", "k", "l"),
+            listOf("z", "x", "c", "v", "b", "n", "m"),
+        ),
+    ),
+    ES(
+        displayName = "Español",
+        flag = "ES",
+        letterRows = listOf(
+            listOf("q", "w", "e", "r", "t", "y", "u", "i", "o", "p"),
+            listOf("a", "s", "d", "f", "g", "h", "j", "k", "l", "ñ"),
+            listOf("z", "x", "c", "v", "b", "n", "m"),
+        ),
+    ),
+    FR(
+        displayName = "Français",
+        flag = "FR",
+        letterRows = listOf(
+            listOf("a", "z", "e", "r", "t", "y", "u", "i", "o", "p"),
+            listOf("q", "s", "d", "f", "g", "h", "j", "k", "l", "m"),
+            listOf("w", "x", "c", "v", "b", "n"),
+        ),
+    ),
+    DE(
+        displayName = "Deutsch",
+        flag = "DE",
+        letterRows = listOf(
+            listOf("q", "w", "e", "r", "t", "z", "u", "i", "o", "p"),
+            listOf("a", "s", "d", "f", "g", "h", "j", "k", "l", "ö"),
+            listOf("y", "x", "c", "v", "b", "n", "m"),
+        ),
+    ),
+    PT(
+        displayName = "Português",
+        flag = "PT",
+        letterRows = listOf(
+            listOf("q", "w", "e", "r", "t", "y", "u", "i", "o", "p"),
+            listOf("a", "s", "d", "f", "g", "h", "j", "k", "l", "ç"),
+            listOf("z", "x", "c", "v", "b", "n", "m"),
+        ),
+    ),
+    IT(
+        displayName = "Italiano",
+        flag = "IT",
+        letterRows = listOf(
+            listOf("q", "w", "e", "r", "t", "y", "u", "i", "o", "p"),
+            listOf("a", "s", "d", "f", "g", "h", "j", "k", "l"),
+            listOf("z", "x", "c", "v", "b", "n", "m"),
+        ),
+    ),
 }

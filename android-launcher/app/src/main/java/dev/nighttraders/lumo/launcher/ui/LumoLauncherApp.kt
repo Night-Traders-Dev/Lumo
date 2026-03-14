@@ -1,6 +1,7 @@
 package dev.nighttraders.lumo.launcher.ui
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
@@ -30,6 +31,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -79,6 +81,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.key
@@ -95,11 +98,13 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -167,12 +172,49 @@ fun LumoLauncherApp(
 ) {
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var indicatorsExpanded by rememberSaveable { mutableStateOf(false) }
-    var railVisible by rememberSaveable { mutableStateOf(false) }
     var notificationActionTarget by remember { mutableStateOf<LauncherNotification?>(null) }
     var appActionTarget by remember { mutableStateOf<LaunchableApp?>(null) }
     var showSwipeHint by rememberSaveable { mutableStateOf(false) }
     var swipeHintShown by rememberSaveable { mutableStateOf(false) }
     var currentScreen by rememberSaveable { mutableStateOf(LauncherScreen.HOME) }
+
+    // Gesture-driven dash rail offset
+    val effectiveRailWidthDp = maxOf(settings.dashRailWidthDp, settings.dashIconSizeDp + 16)
+    val totalRailWidthDp = effectiveRailWidthDp + 4
+    val localDensity = LocalDensity.current
+    val totalRailWidthPx = remember(totalRailWidthDp) {
+        with(localDensity) { totalRailWidthDp.dp.toPx() }
+    }
+    // 0f = fully visible, -totalRailWidthPx = fully hidden
+    val railOffsetPx = remember { Animatable(-with(localDensity) { (totalRailWidthDp).dp.toPx() }) }
+    val railVisible by remember { derivedStateOf { railOffsetPx.value > -totalRailWidthPx + 1f } }
+    val railRevealFraction by remember { derivedStateOf { (1f + railOffsetPx.value / totalRailWidthPx).coerceIn(0f, 1f) } }
+    val coroutineScope = rememberCoroutineScope()
+
+    // Keep offset in sync when settings change rail width
+    LaunchedEffect(totalRailWidthPx) {
+        if (railOffsetPx.value < -1f) {
+            railOffsetPx.snapTo(-totalRailWidthPx)
+        }
+    }
+
+    fun showRail() {
+        coroutineScope.launch {
+            railOffsetPx.animateTo(
+                0f,
+                spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessMediumLow),
+            )
+        }
+    }
+
+    fun hideRail() {
+        coroutineScope.launch {
+            railOffsetPx.animateTo(
+                -totalRailWidthPx,
+                spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMedium),
+            )
+        }
+    }
 
     // React to external navigation requests (e.g. gesture sidebar "open apps" intent)
     LaunchedEffect(navigationRequestId) {
@@ -180,7 +222,17 @@ fun LumoLauncherApp(
             when (requestedPageIndex) {
                 2 -> {
                     // Dash rail request (from overlay edge gesture)
-                    railVisible = !railVisible
+                    if (railVisible) {
+                        railOffsetPx.animateTo(
+                            -totalRailWidthPx,
+                            spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMedium),
+                        )
+                    } else {
+                        railOffsetPx.animateTo(
+                            0f,
+                            spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessMediumLow),
+                        )
+                    }
                     LumoDebugLog.d("Nav", "Intent reqId=$navigationRequestId -> toggle dash rail (visible=$railVisible)")
                 }
                 else -> {
@@ -247,23 +299,21 @@ fun LumoLauncherApp(
 
     LaunchedEffect(indicatorsExpanded) {
         if (indicatorsExpanded) {
-            railVisible = false
+            hideRail()
         }
     }
 
     // Debug: log dash rail state changes
     LaunchedEffect(railVisible) {
-        val effWidth = maxOf(settings.dashRailWidthDp, settings.dashIconSizeDp + 16)
         LumoDebugLog.d(
             "Dash",
-            if (railVisible) "Rail shown — railWidth=${settings.dashRailWidthDp}dp iconSize=${settings.dashIconSizeDp}dp effectiveWidth=${effWidth}dp"
+            if (railVisible) "Rail shown — railWidth=${settings.dashRailWidthDp}dp iconSize=${settings.dashIconSizeDp}dp effectiveWidth=${effectiveRailWidthDp}dp"
             else "Rail hidden",
         )
     }
 
     LaunchedEffect(settings.dashRailWidthDp, settings.dashIconSizeDp) {
-        val effWidth = maxOf(settings.dashRailWidthDp, settings.dashIconSizeDp + 16)
-        LumoDebugLog.d("Dash", "Settings changed — railWidth=${settings.dashRailWidthDp}dp iconSize=${settings.dashIconSizeDp}dp effectiveWidth=${effWidth}dp")
+        LumoDebugLog.d("Dash", "Settings changed — railWidth=${settings.dashRailWidthDp}dp iconSize=${settings.dashIconSizeDp}dp effectiveWidth=${effectiveRailWidthDp}dp")
     }
 
     LaunchedEffect(uiState.headsUpNotification?.key) {
@@ -275,14 +325,14 @@ fun LumoLauncherApp(
     fun openApps(fromBottom: Boolean = false) {
         val target = if (fromBottom) LauncherScreen.APP_DRAWER_BOTTOM else LauncherScreen.APP_DRAWER_SIDE
         LumoDebugLog.d("Nav", "openApps from=$currentScreen to=$target (fromBottom=$fromBottom)")
-        railVisible = false
+        hideRail()
         indicatorsExpanded = false
         currentScreen = target
     }
 
     fun goHome() {
         LumoDebugLog.d("Nav", "goHome from=$currentScreen")
-        railVisible = false
+        hideRail()
         currentScreen = LauncherScreen.HOME
     }
 
@@ -292,10 +342,9 @@ fun LumoLauncherApp(
         label = "appDrawerBlur",
     )
 
-    // Animated padding so content shifts right when the dash rail is visible
-    val effectiveRailWidthDp = maxOf(settings.dashRailWidthDp, settings.dashIconSizeDp + 16)
+    // Content shifts right proportionally to the dash rail reveal
     val railContentOffset = animateDpAsState(
-        targetValue = if (railVisible) (effectiveRailWidthDp + 4).dp else 0.dp,
+        targetValue = if (railVisible) totalRailWidthDp.dp else 0.dp,
         animationSpec = tween(250),
         label = "railContentOffset",
     )
@@ -504,9 +553,30 @@ fun LumoLauncherApp(
                     LeftEdgeRevealHandle(
                         modifier = Modifier.align(Alignment.CenterStart),
                         widthDp = settings.leftEdgeWidthDp,
-                        thresholdDp = settings.leftEdgeThresholdDp,
                         railVisible = railVisible,
-                        onRevealRail = { railVisible = true },
+                        onDrag = { deltaPx ->
+                            coroutineScope.launch {
+                                railOffsetPx.snapTo(
+                                    (railOffsetPx.value + deltaPx).coerceIn(-totalRailWidthPx, 0f),
+                                )
+                            }
+                        },
+                        onDragEnd = {
+                            coroutineScope.launch {
+                                if (railOffsetPx.value > -totalRailWidthPx / 2f) {
+                                    railOffsetPx.animateTo(
+                                        0f,
+                                        spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessMediumLow),
+                                    )
+                                } else {
+                                    railOffsetPx.animateTo(
+                                        -totalRailWidthPx,
+                                        spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMedium),
+                                    )
+                                }
+                            }
+                        },
+                        onTap = { showRail() },
                     )
                 }
 
@@ -541,56 +611,81 @@ fun LumoLauncherApp(
             }
         }
 
-        // Dash rail — flush against the left edge, below the launcher top bar
-        // Top bar occupies ~46dp from top (6dp column padding + 40dp bar height)
-        if (railVisible) {
+        // Dash rail — gesture-driven offset, flush against the left edge below the top bar
+        // Dismiss scrim fades in proportionally to reveal progress
+        if (railRevealFraction > 0.01f) {
             val dismissInteraction = remember { MutableInteractionSource() }
             Box(
                 modifier = Modifier
                     .fillMaxSize()
+                    .graphicsLayer { alpha = railRevealFraction * 0.5f }
+                    .background(Color.Black)
                     .clickable(
                         interactionSource = dismissInteraction,
                         indication = null,
-                        onClick = { railVisible = false },
+                        onClick = { hideRail() },
                     ),
             )
         }
 
-        androidx.compose.animation.AnimatedVisibility(
-            visible = railVisible,
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .windowInsetsPadding(WindowInsets.systemBars)
-                .padding(top = 48.dp),
-            enter = slideInHorizontally(
-                initialOffsetX = { -it },
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioLowBouncy,
-                    stiffness = Spring.StiffnessMediumLow,
-                ),
-            ) + fadeIn(animationSpec = tween(200)),
-            exit = slideOutHorizontally(
-                targetOffsetX = { -it },
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioNoBouncy,
-                    stiffness = Spring.StiffnessMedium,
-                ),
-            ) + fadeOut(animationSpec = tween(150)),
-        ) {
-            UbuntuTouchLauncherRail(
-                appsVisible = appsVisible,
-                railWidthDp = settings.dashRailWidthDp,
-                iconSizeDp = settings.dashIconSizeDp,
-                apps = launcherApps,
-                onOpenApps = { if (appsVisible) goHome() else openApps() },
-                onOpenSettings = onOpenSettings,
-                onLaunchApp = { app ->
-                    railVisible = false
-                    onLaunchApp(app)
-                },
-                onToggleFavorite = onToggleFavorite,
-                onReorderFavorites = onReorderFavorites,
-            )
+        if (railRevealFraction > 0f) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .windowInsetsPadding(WindowInsets.systemBars)
+                    .padding(top = 48.dp)
+                    .offset { IntOffset(railOffsetPx.value.toInt(), 0) }
+                    .pointerInput(totalRailWidthPx) {
+                        // Swipe-to-dismiss: drag rail back to the left
+                        detectHorizontalDragGestures(
+                            onHorizontalDrag = { _, dragAmount ->
+                                coroutineScope.launch {
+                                    railOffsetPx.snapTo(
+                                        (railOffsetPx.value + dragAmount).coerceIn(-totalRailWidthPx, 0f),
+                                    )
+                                }
+                            },
+                            onDragEnd = {
+                                coroutineScope.launch {
+                                    if (railOffsetPx.value > -totalRailWidthPx / 3f) {
+                                        railOffsetPx.animateTo(
+                                            0f,
+                                            spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessMediumLow),
+                                        )
+                                    } else {
+                                        railOffsetPx.animateTo(
+                                            -totalRailWidthPx,
+                                            spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMedium),
+                                        )
+                                    }
+                                }
+                            },
+                            onDragCancel = {
+                                coroutineScope.launch {
+                                    railOffsetPx.animateTo(
+                                        -totalRailWidthPx,
+                                        spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMedium),
+                                    )
+                                }
+                            },
+                        )
+                    },
+            ) {
+                UbuntuTouchLauncherRail(
+                    appsVisible = appsVisible,
+                    railWidthDp = settings.dashRailWidthDp,
+                    iconSizeDp = settings.dashIconSizeDp,
+                    apps = launcherApps,
+                    onOpenApps = { if (appsVisible) goHome() else openApps() },
+                    onOpenSettings = onOpenSettings,
+                    onLaunchApp = { app ->
+                        hideRail()
+                        onLaunchApp(app)
+                    },
+                    onToggleFavorite = onToggleFavorite,
+                    onReorderFavorites = onReorderFavorites,
+                )
+            }
         }
 
         // Scrim behind indicators
@@ -1096,38 +1191,29 @@ private fun SpreadBottomDock(
 private fun LeftEdgeRevealHandle(
     modifier: Modifier = Modifier,
     widthDp: Int = 20,
-    thresholdDp: Int = 24,
     railVisible: Boolean,
-    onRevealRail: () -> Unit,
+    onDrag: (deltaPx: Float) -> Unit,
+    onDragEnd: () -> Unit,
+    onTap: () -> Unit,
 ) {
-    val interactionSource = remember { MutableInteractionSource() }
     Box(
         modifier = modifier
             .fillMaxHeight()
             .width(widthDp.dp)
-            .pointerInput(railVisible, thresholdDp) {
-                val thresholdPx = thresholdDp * density
-                var totalDrag = 0f
+            .pointerInput(railVisible) {
                 detectHorizontalDragGestures(
                     onHorizontalDrag = { _, dragAmount ->
-                        if (dragAmount > 0f) {
-                            totalDrag += dragAmount
+                        if (dragAmount > 0f || railVisible) {
+                            onDrag(dragAmount)
                         }
                     },
-                    onDragCancel = { totalDrag = 0f },
-                    onDragEnd = {
-                        if (totalDrag > thresholdPx) {
-                            onRevealRail()
-                        }
-                        totalDrag = 0f
-                    },
+                    onDragCancel = { onDragEnd() },
+                    onDragEnd = { onDragEnd() },
                 )
             }
-            .clickable(
-                interactionSource = interactionSource,
-                indication = null,
-                onClick = onRevealRail,
-            ),
+            .pointerInput(Unit) {
+                detectTapGestures(onTap = { onTap() })
+            },
     )
 }
 
