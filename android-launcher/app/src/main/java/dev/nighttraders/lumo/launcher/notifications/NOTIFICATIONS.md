@@ -5,7 +5,7 @@ System notification listener and in-launcher notification center.
 ## Files
 
 - `LumoNotificationListenerService.kt` — `NotificationListenerService` that captures active notifications and exposes them via `LauncherNotificationCenter`
-- `LauncherNotificationCenter.kt` — Singleton managing notification list (`StateFlow`), heads-up display, dismiss/snooze
+- `LauncherNotificationCenter.kt` — Singleton managing notification list (`StateFlow`), heads-up display, dismiss/snooze, access gating
 - `LauncherNotification.kt` — Data class for notifications (key, title, message, app label, package, icon, messaging flag, timestamp)
 
 ## Features
@@ -14,8 +14,10 @@ System notification listener and in-launcher notification center.
 - Heads-up notification display with auto-dismiss (6 seconds)
 - Swipe-to-dismiss individual notifications
 - Notification snooze support
-- Open notification content intent or fall back to app launch
+- Open notification content intent (deep links to specific content like SMS thread) or fall back to app launch
 - Notification count badge in top bar
+- Notification-based weather fallback (when Open-Meteo data unavailable)
+- Email notification parsing (Gmail, Outlook, Samsung Email, Yahoo Mail, BlueMail, Thunderbird)
 
 ## Known Issues / Bugs
 

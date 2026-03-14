@@ -13,12 +13,12 @@ Settings activity and related screens for configuring Lumo launcher.
 
 - Appearance: app icon size, grid columns, dash rail width, dash icon size
 - Wallpaper: 8 stock Ubuntu Touch wallpapers, custom image picker with persistent URI permission
-- Gesture configuration: toggle bottom/left edge, multitask swipe, indicator swipe; adjust thresholds
-- Security: PIN/password setup with salted hashing
+- Gesture configuration: toggle bottom/left edge, multitask swipe, indicator swipe; adjust thresholds and dimensions
+- Security: PIN (max 10 digits) / password (max 32 chars) setup with salted SHA-256 hashing
 - Permissions: default home, notification access, overlay, usage stats, keyboard
-- Gesture sidebar toggle
-- Lock screen companion toggle
-- Debug log terminal (survives rotation, pinch-to-zoom, selectable/copyable text)
+- Gesture sidebar toggle (starts/stops `LumoGestureSidebarService`)
+- Lock screen companion toggle (starts/stops `LumoLockScreenCompanionService`)
+- Debug log terminal (survives rotation, pinch-to-zoom, selectable/copyable text, color-coded levels)
 - Cache/data migration on launcher update
 
 ## Known Issues / Bugs
