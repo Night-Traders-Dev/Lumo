@@ -1,7 +1,12 @@
 package dev.nighttraders.lumo.launcher.ui
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -18,7 +23,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -34,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.nighttraders.lumo.launcher.notifications.LauncherNotification
 import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -47,6 +57,31 @@ fun LumoLockScreenScreen(
     val daysInMonth = remember(today) { today.lengthOfMonth() }
     val currentDay = remember(today) { today.dayOfMonth }
     val notificationCount = notifications.size
+
+    // Metric messages for the InfoGraphic center (Ubuntu Touch style)
+    val metricMessages = remember(notifications, today) {
+        buildList {
+            if (notificationCount > 0) {
+                add("$notificationCount notification${if (notificationCount != 1) "s" else ""}")
+            }
+            val messagingCount = notifications.count { it.isMessaging }
+            if (messagingCount > 0) {
+                add("$messagingCount message${if (messagingCount != 1) "s" else ""} received")
+            }
+            val dayOfYear = today.dayOfYear
+            val daysRemaining = today.lengthOfYear() - dayOfYear
+            add("Day $dayOfYear of ${today.year}")
+            add("$daysRemaining days left this year")
+            val monthName = today.format(DateTimeFormatter.ofPattern("MMMM"))
+            add("$currentDay of $daysInMonth days in $monthName")
+            if (isEmpty()) {
+                add(status.networkLabel)
+            }
+        }
+    }
+
+    var metricIndex by rememberSaveable { mutableIntStateOf(0) }
+    val currentMetric = metricMessages.getOrElse(metricIndex % metricMessages.size) { "" }
 
     Box(
         modifier = Modifier
@@ -83,7 +118,17 @@ fun LumoLockScreenScreen(
     ) {
         // InfoGraphic circle + content centered
         Box(
-            modifier = Modifier.align(Alignment.Center),
+            modifier = Modifier
+                .align(Alignment.Center)
+                .pointerInput(metricMessages.size) {
+                    detectTapGestures(
+                        onDoubleTap = {
+                            if (metricMessages.isNotEmpty()) {
+                                metricIndex = (metricIndex + 1) % metricMessages.size
+                            }
+                        },
+                    )
+                },
             contentAlignment = Alignment.Center,
         ) {
             // Dotted circular ring with day-of-month dots
@@ -113,18 +158,20 @@ fun LumoLockScreenScreen(
                     color = Color(0xFFE7DFEA),
                     textAlign = TextAlign.Center,
                 )
-                if (notificationCount > 0) {
+                // Metric message with animated transition on double-tap
+                AnimatedContent(
+                    targetState = currentMetric,
+                    transitionSpec = { fadeIn() togetherWith fadeOut() },
+                    label = "metric",
+                ) { metric ->
                     Text(
-                        text = "$notificationCount notification${if (notificationCount != 1) "s" else ""}",
+                        text = metric,
                         style = MaterialTheme.typography.bodyMedium,
-                        color = Color(0xFFE95420),
-                        textAlign = TextAlign.Center,
-                    )
-                } else {
-                    Text(
-                        text = status.networkLabel,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = Color(0xFFB8AFBA),
+                        color = if (notificationCount > 0 && metricIndex == 0) {
+                            Color(0xFFE95420)
+                        } else {
+                            Color(0xFFB8AFBA)
+                        },
                         textAlign = TextAlign.Center,
                     )
                 }
@@ -219,14 +266,17 @@ private fun InfoGraphicRing(
             val dotY = centerY + radius * sin(angle).toFloat()
 
             val isCurrentDay = day == currentDay
+            val isPastDay = day < currentDay
             val dotRadius = when {
                 isCurrentDay -> 6f
+                isPastDay -> 3.5f
                 else -> 2.8f
             }
             val color = when {
                 isCurrentDay -> activeDotColor
-                hasNotifications && day < currentDay -> dotColor.copy(alpha = 0.7f)
-                else -> dotColor.copy(alpha = 0.35f)
+                isPastDay && hasNotifications -> activeDotColor.copy(alpha = 0.5f)
+                isPastDay -> dotColor.copy(alpha = 0.6f)
+                else -> dotColor.copy(alpha = 0.25f)
             }
 
             drawCircle(
@@ -240,7 +290,7 @@ private fun InfoGraphicRing(
         if (currentDay > 1) {
             val sweepAngle = ((currentDay - 1).toFloat() / daysInMonth) * 360f
             drawArc(
-                color = activeDotColor.copy(alpha = 0.25f),
+                color = activeDotColor.copy(alpha = 0.3f),
                 startAngle = -90f,
                 sweepAngle = sweepAngle,
                 useCenter = false,

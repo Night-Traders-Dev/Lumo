@@ -13,17 +13,19 @@ If you are here to build or test the current launcher, start with [`android-laun
 
 - Android Home-role launcher
 - Ubuntu Touch-style home surface and app scope
-- Edge-reveal launcher rail
-- Notification listener with recent notifications, heads-up alerts, swipe-to-dismiss, and long-press actions
+- Ubuntu Touch-style dock with BFB button, squircle app icons, and separators
+- Edge-reveal launcher rail matching the dock design
+- Full-width Ubuntu Touch-style indicator panel with status pills, swipe-to-dismiss notifications, and quick actions
+- Notification listener with deep linking (opens specific SMS thread, not just the app), heads-up alerts, swipe-to-dismiss, and long-press actions
 - Lumo System settings surface
-- Lumo lock screen surface layered over Android's real keyguard flow
-- Lumo Keyboard IME with haptics, symbol layers, and suggestion strip
+- Lumo lock screen with Ubuntu Touch InfoGraphic ring (day-of-month dots, metric messages, double-tap to cycle)
+- Lumo Keyboard IME styled after Ubuntu Touch Maliit (charcoal flat keys, character popover, swipe typing, suggestion strip)
 - Optional overlay-based gesture sidebar for reaching Lumo from other apps
 
 ## Repository Layout
 
 - `android-launcher/`
-  Native Android app, Gradle project, Compose UI, IME, notification listener, overlay service
+  Native Android app, Gradle project, Compose UI, IME with swipe typing, notification listener with deep linking, overlay service
 - `src/`
   Legacy Python + GTK prototype
 - `docs/`

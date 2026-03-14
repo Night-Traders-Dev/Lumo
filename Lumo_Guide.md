@@ -53,10 +53,12 @@ From Lumo:
 
 What you get after enabling it:
 
-- Recent notifications on Home
-- Heads-up alerts
-- Swipe-to-dismiss notification cards
+- Recent notifications on Home and in the indicator panel
+- Heads-up alerts with swipe-to-dismiss
+- Swipe-to-dismiss notification cards in the indicator panel
 - Long-press actions for open, open app, snooze, and dismiss
+- Tap a notification to open the specific content (e.g., tapping an SMS opens that conversation thread, not just the Messages app)
+- "Clear all" button to dismiss all notifications at once
 
 ## 5. Enable the Gesture Sidebar
 
@@ -73,8 +75,10 @@ From `Lumo System`:
 What it does:
 
 - Adds a left-edge overlay handle
-- Lets you reveal a Lumo rail from other apps
-- Provides quick access to Home, Apps, pinned apps, System, and Lock
+- Lets you reveal a Lumo dock from other apps
+- Ubuntu BFB (Big Friendly Button) at top for Home
+- Squircle-shaped pinned app icons
+- Apps grid button at bottom
 
 Important note:
 
@@ -94,11 +98,14 @@ From `Lumo System`:
 
 Current keyboard features:
 
-- Haptic key feedback
-- Shift
-- Primary symbol page
-- Alternate symbol page
-- Suggestion strip
+- Ubuntu Touch Maliit-inspired styling (charcoal flat keys with subtle rounding)
+- Character popover preview on key press
+- Swipe typing (gesture typing) across letter keys with word suggestions
+- Haptic key feedback (including per-key haptic during swipe)
+- Shift and auto-capitalization
+- Primary symbol page (`?123`) and alternate symbol page (`#+=`)
+- Suggestion strip with autocorrect, spell check, and local dictionary
+- Space bar cursor control: hold and drag to move the text cursor
 - Android completion and spell-check integration
 
 Important note:
@@ -116,7 +123,12 @@ From `Lumo System`:
 
 Behavior:
 
-- Shows time, date, network, and recent notifications
+- Ubuntu Touch InfoGraphic ring with day-of-month dots around the circle
+- Shows time, date, and metric messages inside the ring
+- Double-tap the circle to cycle through metrics (notification count, messages, day of year, etc.)
+- Past days shown with larger dots and orange tint when notifications exist
+- Accent arc tracks progress through the month
+- Up to 3 notification cards shown below the ring
 - Swipe up to dismiss into Android's real unlock flow
 
 Important note:
@@ -128,16 +140,27 @@ Important note:
 
 Inside the launcher:
 
-- Left edge on Home: reveal launcher rail
-- Tap outside rail: close rail
+- Left edge on Home: reveal Ubuntu Touch-style dock (BFB button, pinned apps, apps grid)
+- Tap outside dock: close dock
 - Swipe up from bottom on Home: open Apps
-- Swipe down/up on top indicators bar: expand/collapse indicators
+- Swipe down/up on top indicators bar: expand/collapse full-width indicator panel
 - Swipe notifications sideways: dismiss
-- Long-press notifications: actions sheet
+- Long-press notifications: actions sheet (open, open app, snooze, dismiss)
+- Tap notification: deep link to specific content (SMS thread, email, etc.)
+
+On the lock screen:
+
+- Swipe up: unlock
+- Double-tap the InfoGraphic circle: cycle through metric messages
+
+On the keyboard:
+
+- Swipe across letter keys: gesture/swipe typing
+- Hold and drag spacebar: move cursor left/right
 
 Outside the launcher:
 
-- Left edge overlay handle: reveal sidebar if overlay permission is enabled
+- Left edge overlay handle: reveal dock sidebar if overlay permission is enabled
 
 ## 9. Troubleshooting
 

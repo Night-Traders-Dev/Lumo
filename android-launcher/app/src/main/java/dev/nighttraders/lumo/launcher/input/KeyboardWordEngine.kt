@@ -1,6 +1,7 @@
 package dev.nighttraders.lumo.launcher.input
 
 import android.content.Context
+import android.provider.UserDictionary
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.min
@@ -90,12 +91,20 @@ internal class KeyboardWordEngine private constructor(
             return emptyList()
         }
 
-        val bucket = firstLetterBuckets[trace.first()] ?: words
-        return bucket
+        val firstChar = trace.first()
+        val lastChar = trace.last()
+
+        // Search primary bucket (matching first letter) and nearby-letter bucket
+        val primaryBucket = firstLetterBuckets[firstChar] ?: emptyList()
+        val nearbyFirstChars = ADJACENT_KEYS[firstChar].orEmpty()
+        val nearbyBuckets = nearbyFirstChars.flatMap { c -> firstLetterBuckets[c].orEmpty() }
+        val combinedBucket = primaryBucket + nearbyBuckets
+
+        return combinedBucket
             .asSequence()
             .filter { candidate ->
                 candidate.value.length >= 2 &&
-                    abs(candidate.value.length - trace.length) <= 8
+                    abs(candidate.value.length - trace.length) <= 10
             }
             .mapNotNull { candidate ->
                 val score = swipeScore(trace, candidate)
@@ -147,25 +156,48 @@ internal class KeyboardWordEngine private constructor(
     private fun swipeScore(trace: String, candidate: DictionaryWord): Int {
         val signature = collapseRepeats(candidate.value)
         val distance = damerauLevenshtein(trace, signature)
-        val limit = maxOf(1, trace.length / 2 + 1)
+        // More forgiving limit — swipe traces often pick up extra keys or miss some
+        val limit = maxOf(2, (trace.length * 2) / 3 + 2)
         if (distance > limit) {
             return Int.MAX_VALUE
         }
 
-        var score = distance * 18 + abs(candidate.value.length - trace.length) * 3 + frequencyPenalty(candidate.rank)
-        if (candidate.value.firstOrNull() != trace.firstOrNull()) {
-            score += 40
+        var score = distance * 14 + abs(candidate.value.length - trace.length) * 2 + frequencyPenalty(candidate.rank)
+
+        // First/last letter matching is very important for swipe
+        val firstMatch = candidate.value.firstOrNull() == trace.firstOrNull()
+        val firstAdjacent = !firstMatch && isAdjacentKey(candidate.value.firstOrNull(), trace.firstOrNull())
+        if (!firstMatch && !firstAdjacent) {
+            score += 50
+        } else if (firstAdjacent) {
+            score += 15
         }
-        if (candidate.value.lastOrNull() != trace.lastOrNull()) {
-            score += 18
+
+        val lastMatch = candidate.value.lastOrNull() == trace.lastOrNull()
+        val lastAdjacent = !lastMatch && isAdjacentKey(candidate.value.lastOrNull(), trace.lastOrNull())
+        if (!lastMatch && !lastAdjacent) {
+            score += 25
+        } else if (lastAdjacent) {
+            score += 8
         }
+
+        // Check if the candidate's key signature is a subsequence of the trace
         if (!isSubsequence(signature, trace)) {
-            score += 22
+            // Not a strict fail — penalize but allow near-misses
+            score += 16
         }
-        if (!isSubsequence(trace, signature)) {
-            score += 14
+
+        // Reward when trace contains the word's key path in order
+        if (isSubsequence(collapseRepeats(candidate.value), trace)) {
+            score -= 6
         }
+
         return score
+    }
+
+    private fun isAdjacentKey(a: Char?, b: Char?): Boolean {
+        if (a == null || b == null) return false
+        return ADJACENT_KEYS[a]?.contains(b) == true
     }
 
     private fun wordsByValue(value: String): DictionaryWord? {
@@ -281,6 +313,7 @@ internal class KeyboardWordEngine private constructor(
             val mergedWords = linkedSetOf<String>()
             mergedWords += commonWords
             mergedWords += loadAssetWords(context)
+            mergedWords += loadUserDictionaryWords(context)
 
             val dictionaryWords = mergedWords
                 .mapIndexed { index, word ->
@@ -310,6 +343,30 @@ internal class KeyboardWordEngine private constructor(
             )
         }
 
+        private fun loadUserDictionaryWords(context: Context): List<String> =
+            runCatching {
+                val cursor = context.contentResolver.query(
+                    UserDictionary.Words.CONTENT_URI,
+                    arrayOf(UserDictionary.Words.WORD),
+                    null,
+                    null,
+                    UserDictionary.Words.FREQUENCY + " DESC",
+                )
+                cursor?.use {
+                    val wordIndex = it.getColumnIndex(UserDictionary.Words.WORD)
+                    if (wordIndex < 0) return@use emptyList()
+                    buildList {
+                        while (it.moveToNext()) {
+                            it.getString(wordIndex)
+                                ?.trim()
+                                ?.takeIf(String::isNotBlank)
+                                ?.lowercase(Locale.getDefault())
+                                ?.let(::add)
+                        }
+                    }
+                } ?: emptyList()
+            }.getOrDefault(emptyList())
+
         private fun loadAssetWords(context: Context): List<String> =
             runCatching {
                 context.assets.open(DICTIONARY_ASSET).bufferedReader().useLines { lines ->
@@ -324,6 +381,36 @@ internal class KeyboardWordEngine private constructor(
             }.getOrDefault(emptyList())
 
         private const val DICTIONARY_ASSET = "ime-words.txt"
+
+        // QWERTY adjacency map for spatial-aware swipe matching
+        val ADJACENT_KEYS: Map<Char, Set<Char>> = mapOf(
+            'q' to setOf('w', 'a'),
+            'w' to setOf('q', 'e', 'a', 's'),
+            'e' to setOf('w', 'r', 's', 'd'),
+            'r' to setOf('e', 't', 'd', 'f'),
+            't' to setOf('r', 'y', 'f', 'g'),
+            'y' to setOf('t', 'u', 'g', 'h'),
+            'u' to setOf('y', 'i', 'h', 'j'),
+            'i' to setOf('u', 'o', 'j', 'k'),
+            'o' to setOf('i', 'p', 'k', 'l'),
+            'p' to setOf('o', 'l'),
+            'a' to setOf('q', 'w', 's', 'z'),
+            's' to setOf('a', 'w', 'e', 'd', 'z', 'x'),
+            'd' to setOf('s', 'e', 'r', 'f', 'x', 'c'),
+            'f' to setOf('d', 'r', 't', 'g', 'c', 'v'),
+            'g' to setOf('f', 't', 'y', 'h', 'v', 'b'),
+            'h' to setOf('g', 'y', 'u', 'j', 'b', 'n'),
+            'j' to setOf('h', 'u', 'i', 'k', 'n', 'm'),
+            'k' to setOf('j', 'i', 'o', 'l', 'm'),
+            'l' to setOf('k', 'o', 'p'),
+            'z' to setOf('a', 's', 'x'),
+            'x' to setOf('z', 's', 'd', 'c'),
+            'c' to setOf('x', 'd', 'f', 'v'),
+            'v' to setOf('c', 'f', 'g', 'b'),
+            'b' to setOf('v', 'g', 'h', 'n'),
+            'n' to setOf('b', 'h', 'j', 'm'),
+            'm' to setOf('n', 'j', 'k'),
+        )
 
         private const val COMMON_WORDS = """
             the

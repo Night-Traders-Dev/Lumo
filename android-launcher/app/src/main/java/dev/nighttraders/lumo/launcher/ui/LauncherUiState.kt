@@ -13,6 +13,7 @@ data class LauncherUiState(
     val isLoading: Boolean = true,
     val apps: List<LaunchableApp> = emptyList(),
     val favoriteKeys: Set<String> = emptySet(),
+    val recentAppKeys: List<String> = emptyList(),
     val notifications: List<LauncherNotification> = emptyList(),
     val headsUpNotification: LauncherNotification? = null,
     val hasNotificationAccess: Boolean = false,
@@ -22,6 +23,12 @@ data class LauncherUiState(
 
     val featuredApps: List<LaunchableApp>
         get() = favorites.ifEmpty { apps.take(5) }.take(5)
+
+    val recentApps: List<LaunchableApp>
+        get() {
+            val appsByKey = apps.associateBy { it.componentKey }
+            return recentAppKeys.mapNotNull { key -> appsByKey[key] }
+        }
 
     val activeNotificationCount: Int
         get() = notifications.size

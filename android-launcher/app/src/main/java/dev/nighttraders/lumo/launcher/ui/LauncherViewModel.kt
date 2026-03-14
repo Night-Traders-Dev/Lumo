@@ -25,6 +25,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     private val loading = MutableStateFlow(true)
     private val apps = MutableStateFlow<List<LaunchableApp>>(emptyList())
     private val favoriteKeys = repository.observeFavoriteKeys()
+    private val recentAppKeys = repository.observeRecentAppKeys()
     private val defaultHome = MutableStateFlow(false)
     private val notificationAccess = MutableStateFlow(application.hasNotificationListenerAccess())
     private val notifications = LauncherNotificationCenter.notifications
@@ -46,6 +47,8 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         state.copy(headsUpNotification = headsUp)
     }.combine(notificationAccess) { state, hasAccess ->
         state.copy(hasNotificationAccess = hasAccess)
+    }.combine(recentAppKeys) { state, recentKeys ->
+        state.copy(recentAppKeys = recentKeys)
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
@@ -76,14 +79,28 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    fun launchApp(app: LaunchableApp): Result<Unit> = repository.launchApp(app)
+    fun launchApp(app: LaunchableApp): Result<Unit> {
+        val result = repository.launchApp(app)
+        if (result.isSuccess) {
+            viewModelScope.launch {
+                repository.recordRecentApp(app.componentKey)
+            }
+        }
+        return result
+    }
+
+    fun openAppInfo(app: LaunchableApp): Result<Unit> = repository.openAppInfo(app)
+
+    fun requestUninstall(app: LaunchableApp): Result<Unit> = repository.requestUninstall(app)
 
     fun openNotification(notification: LauncherNotification): Result<Unit> {
+        // First try the notification's own contentIntent — this deep links to the
+        // specific content (e.g., the SMS conversation thread, not just the SMS app)
         val directOpen = LumoNotificationListenerService.openNotification(notification.key)
         if (directOpen.getOrNull() == true) {
-            LumoNotificationListenerService.dismissNotification(notification.key)
             return Result.success(Unit)
         }
+        // Fallback: launch the app's main activity and dismiss the notification
         val launchResult = repository.launchPackage(notification.packageName)
         if (launchResult.isSuccess) {
             LumoNotificationListenerService.dismissNotification(notification.key)

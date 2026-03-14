@@ -119,6 +119,18 @@ class MainActivity : ComponentActivity() {
                     },
                     onDismissHeadsUpNotification = viewModel::dismissHeadsUpNotification,
                     onToggleFavorite = viewModel::toggleFavorite,
+                    onOpenAppInfo = { app ->
+                        val result = viewModel.openAppInfo(app)
+                        if (result.isFailure) {
+                            Toast.makeText(this, "Could not open app info", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    onRequestUninstall = { app ->
+                        val result = viewModel.requestUninstall(app)
+                        if (result.isFailure) {
+                            Toast.makeText(this, "Could not uninstall app", Toast.LENGTH_SHORT).show()
+                        }
+                    },
                     onRefresh = {
                         viewModel.refreshApps()
                         viewModel.refreshNotifications()

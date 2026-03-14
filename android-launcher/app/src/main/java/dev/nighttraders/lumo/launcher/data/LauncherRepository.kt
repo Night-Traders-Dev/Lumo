@@ -5,8 +5,10 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.LauncherApps
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Process
+import android.provider.Settings
 import androidx.core.graphics.drawable.toBitmap
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.preferencesDataStore
@@ -18,6 +20,8 @@ import kotlinx.coroutines.withContext
 import java.util.Locale
 
 private const val ICON_SIZE_DP = 56
+private const val MAX_RECENT_APPS = 12
+private const val RECENT_SEPARATOR = "|"
 
 private val Context.launcherPreferences by preferencesDataStore(name = "lumo_launcher")
 
@@ -127,6 +131,37 @@ class LauncherRepository(private val context: Context) {
             preferences[LauncherPreferences.lockScreenCompanionEnabled] = enabled
         }
     }
+
+    fun openAppInfo(app: LaunchableApp): Result<Unit> = runCatching {
+        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+            .setData(Uri.parse("package:${app.packageName}"))
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        context.startActivity(intent)
+    }
+
+    fun requestUninstall(app: LaunchableApp): Result<Unit> = runCatching {
+        val intent = Intent(Intent.ACTION_DELETE)
+            .setData(Uri.parse("package:${app.packageName}"))
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        context.startActivity(intent)
+    }
+
+    suspend fun recordRecentApp(componentKey: String) {
+        context.launcherPreferences.edit { preferences ->
+            val raw = preferences[LauncherPreferences.recentAppKeys].orEmpty()
+            val current = if (raw.isBlank()) mutableListOf() else raw.split(RECENT_SEPARATOR).toMutableList()
+            current.remove(componentKey)
+            current.add(0, componentKey)
+            preferences[LauncherPreferences.recentAppKeys] =
+                current.take(MAX_RECENT_APPS).joinToString(RECENT_SEPARATOR)
+        }
+    }
+
+    fun observeRecentAppKeys(): Flow<List<String>> =
+        context.launcherPreferences.data.map { preferences ->
+            val raw = preferences[LauncherPreferences.recentAppKeys].orEmpty()
+            if (raw.isBlank()) emptyList() else raw.split(RECENT_SEPARATOR)
+        }
 
     fun launchApp(app: LaunchableApp): Result<Unit> {
         val componentName = ComponentName(app.packageName, app.className)

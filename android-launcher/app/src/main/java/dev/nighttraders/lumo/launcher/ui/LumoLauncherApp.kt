@@ -37,7 +37,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Apps
 import androidx.compose.material.icons.rounded.Battery6Bar
+import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.PushPin
 import androidx.compose.material.icons.rounded.Search
@@ -112,12 +114,15 @@ fun LumoLauncherApp(
     onSnoozeNotification: (LauncherNotification, Long) -> Result<Unit>,
     onDismissHeadsUpNotification: (String) -> Unit,
     onToggleFavorite: (LaunchableApp) -> Unit,
+    onOpenAppInfo: (LaunchableApp) -> Unit,
+    onRequestUninstall: (LaunchableApp) -> Unit,
     onRefresh: () -> Unit,
 ) {
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var indicatorsExpanded by rememberSaveable { mutableStateOf(false) }
     var railVisible by rememberSaveable { mutableStateOf(false) }
     var notificationActionTarget by remember { mutableStateOf<LauncherNotification?>(null) }
+    var appActionTarget by remember { mutableStateOf<LaunchableApp?>(null) }
     val pagerState = rememberPagerState(
         initialPage = requestedPageIndex.coerceIn(0, ScopePage.entries.lastIndex),
         pageCount = { ScopePage.entries.size },
@@ -229,16 +234,20 @@ fun LumoLauncherApp(
                 HorizontalPager(
                     state = pagerState,
                     modifier = Modifier.fillMaxSize(),
+                    beyondViewportPageCount = 1,
                 ) { page ->
                     when (ScopePage.entries[page]) {
                         ScopePage.Home -> HomeScopePage(
                             status = systemStatus,
+                            pinnedApps = uiState.favorites,
+                            recentApps = uiState.recentApps,
                             hasNotificationAccess = uiState.hasNotificationAccess,
                             notifications = uiState.recentNotifications,
                             onRequestNotificationAccess = onRequestNotificationAccess,
                             onOpenNotification = onOpenNotification,
                             onLongPressNotification = { notificationActionTarget = it },
                             onDismissNotification = onDismissNotification,
+                            onLaunchApp = onLaunchApp,
                         )
 
                         ScopePage.Apps -> AppsScopePage(
@@ -248,7 +257,7 @@ fun LumoLauncherApp(
                             searchQuery = searchQuery,
                             onSearchQueryChange = { searchQuery = it },
                             onLaunchApp = onLaunchApp,
-                            onToggleFavorite = onToggleFavorite,
+                            onLongPressApp = { appActionTarget = it },
                         )
                     }
                 }
@@ -329,8 +338,8 @@ fun LumoLauncherApp(
                 modifier = Modifier
                     .fillMaxSize()
                     .windowInsetsPadding(WindowInsets.systemBars)
-                    .padding(top = 52.dp, end = 8.dp),
-                contentAlignment = Alignment.TopEnd,
+                    .padding(top = 46.dp, start = 8.dp, end = 8.dp),
+                contentAlignment = Alignment.TopCenter,
             ) {
                 IndicatorsSheet(
                     status = systemStatus,
@@ -386,6 +395,30 @@ fun LumoLauncherApp(
                 onDismissNotification = {
                     notificationActionTarget = null
                     onDismissNotification(notification)
+                },
+            )
+        }
+
+        appActionTarget?.let { app ->
+            AppActionSheet(
+                app = app,
+                isFavorite = uiState.favoriteKeys.contains(app.componentKey),
+                onDismiss = { appActionTarget = null },
+                onLaunchApp = {
+                    appActionTarget = null
+                    onLaunchApp(app)
+                },
+                onToggleFavorite = {
+                    onToggleFavorite(app)
+                    appActionTarget = null
+                },
+                onOpenAppInfo = {
+                    appActionTarget = null
+                    onOpenAppInfo(app)
+                },
+                onRequestUninstall = {
+                    appActionTarget = null
+                    onRequestUninstall(app)
                 },
             )
         }
@@ -584,75 +617,135 @@ private fun IndicatorsSheet(
     onDismissNotification: (LauncherNotification) -> Result<Unit>,
 ) {
     Surface(
-        modifier = Modifier.width(272.dp),
-        color = Color(0xEE170D18),
-        shape = RoundedCornerShape(24.dp),
-        shadowElevation = 10.dp,
+        modifier = Modifier.fillMaxWidth(),
+        color = Color(0xF0141018),
+        shape = RoundedCornerShape(bottomStart = 18.dp, bottomEnd = 18.dp),
+        shadowElevation = 14.dp,
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 18.dp, vertical = 16.dp),
         ) {
-            IndicatorRow(title = "Date", value = status.dateLabel)
-            IndicatorRow(title = "Network", value = status.networkLabel)
-            IndicatorRow(
-                title = "Battery",
-                value = status.batteryPercent?.let { "$it%" } ?: "--%",
+            // Status indicators row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+            ) {
+                IndicatorPill(
+                    icon = Icons.Rounded.Wifi,
+                    label = status.networkLabel,
+                )
+                IndicatorPill(
+                    icon = Icons.Rounded.Battery6Bar,
+                    label = status.batteryPercent?.let { "$it%" } ?: "--%",
+                )
+                IndicatorPill(
+                    icon = Icons.Rounded.Notifications,
+                    label = if (hasNotificationAccess) {
+                        "${notifications.size}"
+                    } else {
+                        "Off"
+                    },
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Date header
+            Text(
+                text = status.dateLabel,
+                style = MaterialTheme.typography.titleMedium,
+                color = Color.White,
+                modifier = Modifier.padding(bottom = 10.dp),
             )
 
-            IndicatorRow(
-                title = "Notifications",
-                value = if (hasNotificationAccess) {
-                    "${notifications.size} active"
-                } else {
-                    "Access is off"
-                },
+            // Thin separator
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(Color(0x33FFFFFF)),
             )
 
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Notifications section
             if (!hasNotificationAccess) {
                 NotificationAccessCard(onRequestNotificationAccess = onRequestNotificationAccess)
             } else if (notifications.isEmpty()) {
                 Text(
-                    text = "No recent notifications",
+                    text = "No notifications",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = Color(0xFFB8AFBA),
+                    color = Color(0xFF777777),
+                    modifier = Modifier.padding(vertical = 8.dp),
                 )
             } else {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     notifications.forEach { notification ->
-                        SimpleNotificationCard(
+                        NotificationListItem(
                             notification = notification,
                             onOpenNotification = onOpenNotification,
+                            onLongPressNotification = onLongPressNotification,
+                            onDismissNotification = onDismissNotification,
                         )
                     }
 
-                    Button(
-                        onClick = {
-                            notifications.forEach { onDismissNotification(it) }
-                        },
+                    // Dismiss all
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 4.dp),
+                        contentAlignment = Alignment.CenterEnd,
                     ) {
-                        Text("Dismiss All")
+                        Text(
+                            text = "Clear all",
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable {
+                                    notifications.forEach { onDismissNotification(it) }
+                                }
+                                .padding(horizontal = 12.dp, vertical = 6.dp),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = Color(0xFFE95420),
+                        )
                     }
                 }
             }
 
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = onRefresh) {
-                    Text("Refresh")
-                }
-                Button(onClick = onOpenSettings) {
-                    Text("Settings")
-                }
-            }
+            Spacer(modifier = Modifier.height(10.dp))
 
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = onOpenLockScreen) {
-                    Text("Lock")
-                }
+            // Thin separator
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(Color(0x33FFFFFF)),
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Action row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+            ) {
+                IndicatorActionButton(
+                    icon = Icons.Rounded.Settings,
+                    label = "Settings",
+                    onClick = onOpenSettings,
+                )
+                IndicatorActionButton(
+                    icon = Icons.Rounded.Home,
+                    label = "Lock",
+                    onClick = onOpenLockScreen,
+                )
                 if (!isDefaultHome) {
-                    Button(onClick = onRequestDefaultHome) {
-                        Text("Set Home")
-                    }
+                    IndicatorActionButton(
+                        icon = Icons.Rounded.PushPin,
+                        label = "Set Home",
+                        onClick = onRequestDefaultHome,
+                    )
                 }
             }
         }
@@ -660,20 +753,58 @@ private fun IndicatorsSheet(
 }
 
 @Composable
-private fun IndicatorRow(
-    title: String,
-    value: String,
+private fun IndicatorPill(
+    icon: ImageVector,
+    label: String,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.labelSmall,
-            color = Color(0xFFB8AFBA),
+    Surface(
+        color = Color(0x22FFFFFF),
+        shape = RoundedCornerShape(14.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = Color(0xFFDFDBD2),
+                modifier = Modifier.size(18.dp),
+            )
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelMedium,
+                color = Color.White,
+            )
+        }
+    }
+}
+
+@Composable
+private fun IndicatorActionButton(
+    icon: ImageVector,
+    label: String,
+    onClick: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = Color(0xFFDFDBD2),
+            modifier = Modifier.size(22.dp),
         )
         Text(
-            text = value,
-            style = MaterialTheme.typography.titleSmall,
-            color = Color.White,
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = Color(0xFFB8AFBA),
         )
     }
 }
@@ -845,18 +976,21 @@ private fun DockAppIcon(
 @Composable
 private fun HomeScopePage(
     status: SystemStatusSnapshot,
+    pinnedApps: List<LaunchableApp>,
+    recentApps: List<LaunchableApp>,
     hasNotificationAccess: Boolean,
     notifications: List<LauncherNotification>,
     onRequestNotificationAccess: () -> Unit,
     onOpenNotification: (LauncherNotification) -> Unit,
     onLongPressNotification: (LauncherNotification) -> Unit,
     onDismissNotification: (LauncherNotification) -> Result<Unit>,
+    onLaunchApp: (LaunchableApp) -> Unit,
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
                 .align(Alignment.TopCenter)
-                .padding(top = 96.dp),
+                .padding(top = 64.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
@@ -887,7 +1021,7 @@ private fun HomeScopePage(
             } else if (notifications.isNotEmpty()) {
                 Column(
                     modifier = Modifier
-                        .padding(top = 24.dp)
+                        .padding(top = 16.dp)
                         .width(284.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
@@ -899,6 +1033,30 @@ private fun HomeScopePage(
                     }
                 }
             }
+
+            // Dash: Pinned apps
+            if (pinnedApps.isNotEmpty()) {
+                DashAppRow(
+                    label = "Pinned",
+                    apps = pinnedApps.take(5),
+                    onLaunchApp = onLaunchApp,
+                    modifier = Modifier.padding(top = 20.dp),
+                )
+            }
+
+            // Dash: Recent apps (exclude pinned to avoid duplicates)
+            val pinnedKeys = remember(pinnedApps) { pinnedApps.mapTo(hashSetOf()) { it.componentKey } }
+            val filteredRecent = remember(recentApps, pinnedKeys) {
+                recentApps.filter { it.componentKey !in pinnedKeys }
+            }
+            if (filteredRecent.isNotEmpty()) {
+                DashAppRow(
+                    label = "Recent",
+                    apps = filteredRecent.take(5),
+                    onLaunchApp = onLaunchApp,
+                    modifier = Modifier.padding(top = 16.dp),
+                )
+            }
         }
 
         Text(
@@ -909,6 +1067,53 @@ private fun HomeScopePage(
             style = MaterialTheme.typography.labelLarge,
             color = Color(0x99FFFFFF),
         )
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun DashAppRow(
+    label: String,
+    apps: List<LaunchableApp>,
+    onLaunchApp: (LaunchableApp) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            color = Color(0xFF888888),
+            modifier = Modifier.padding(bottom = 10.dp),
+        )
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            apps.forEach { app ->
+                Column(
+                    modifier = Modifier
+                        .clickable { onLaunchApp(app) },
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    AppIcon(app = app, size = 44.dp)
+                    Text(
+                        text = app.label,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color(0xFFB8AFBA),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.width(52.dp),
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -1151,6 +1356,130 @@ private fun NotificationActionRow(
 }
 
 @Composable
+private fun AppActionSheet(
+    app: LaunchableApp,
+    isFavorite: Boolean,
+    onDismiss: () -> Unit,
+    onLaunchApp: () -> Unit,
+    onToggleFavorite: () -> Unit,
+    onOpenAppInfo: () -> Unit,
+    onRequestUninstall: () -> Unit,
+) {
+    val dismissInteraction = remember { MutableInteractionSource() }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0x88000000))
+            .clickable(
+                interactionSource = dismissInteraction,
+                indication = null,
+                onClick = onDismiss,
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Surface(
+            modifier = Modifier
+                .width(280.dp)
+                .clickable(enabled = false, onClick = {}),
+            color = Color(0xF218101A),
+            shape = RoundedCornerShape(20.dp),
+            shadowElevation = 18.dp,
+        ) {
+            Column(
+                modifier = Modifier.padding(vertical = 12.dp),
+            ) {
+                // App header with icon
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 18.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    AppIcon(app = app, size = 40.dp)
+                    Text(
+                        text = app.label,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Color.White,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+
+                // Separator
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp)
+                        .height(1.dp)
+                        .background(Color(0x33FFFFFF)),
+                )
+
+                // Open
+                AppActionRow(
+                    icon = Icons.Rounded.Apps,
+                    label = "Open",
+                    onClick = onLaunchApp,
+                )
+
+                // Pin / Unpin
+                AppActionRow(
+                    icon = Icons.Rounded.PushPin,
+                    label = if (isFavorite) "Unpin from Launcher" else "Pin to Launcher",
+                    onClick = onToggleFavorite,
+                )
+
+                // App info
+                AppActionRow(
+                    icon = Icons.Rounded.Info,
+                    label = "App info",
+                    onClick = onOpenAppInfo,
+                )
+
+                // Uninstall
+                AppActionRow(
+                    icon = Icons.Rounded.Delete,
+                    label = "Uninstall",
+                    destructive = true,
+                    onClick = onRequestUninstall,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AppActionRow(
+    icon: ImageVector,
+    label: String,
+    destructive: Boolean = false,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 18.dp, vertical = 13.dp),
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = if (destructive) Color(0xFFED3146) else Color(0xFFB8AFBA),
+            modifier = Modifier.size(20.dp),
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyLarge,
+            color = if (destructive) Color(0xFFED3146) else Color.White,
+        )
+    }
+}
+
+@Composable
 private fun SimpleNotificationCard(
     notification: LauncherNotification,
     onOpenNotification: (LauncherNotification) -> Unit,
@@ -1285,7 +1614,7 @@ private fun AppsScopePage(
     searchQuery: String,
     onSearchQueryChange: (String) -> Unit,
     onLaunchApp: (LaunchableApp) -> Unit,
-    onToggleFavorite: (LaunchableApp) -> Unit,
+    onLongPressApp: (LaunchableApp) -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -1316,7 +1645,7 @@ private fun AppsScopePage(
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    text = "Loading apps…",
+                    text = "Loading apps...",
                     style = MaterialTheme.typography.bodyMedium,
                     color = Color(0xFFB8AFBA),
                 )
@@ -1331,12 +1660,13 @@ private fun AppsScopePage(
                 items(
                     items = apps,
                     key = { app -> app.componentKey },
+                    contentType = { "app_grid_item" },
                 ) { app ->
                     AppGridItem(
                         app = app,
                         isFavorite = favoriteKeys.contains(app.componentKey),
                         onLaunchApp = onLaunchApp,
-                        onToggleFavorite = onToggleFavorite,
+                        onLongPressApp = onLongPressApp,
                     )
                 }
             }
@@ -1350,14 +1680,14 @@ private fun AppGridItem(
     app: LaunchableApp,
     isFavorite: Boolean,
     onLaunchApp: (LaunchableApp) -> Unit,
-    onToggleFavorite: (LaunchableApp) -> Unit,
+    onLongPressApp: (LaunchableApp) -> Unit,
 ) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .combinedClickable(
                 onClick = { onLaunchApp(app) },
-                onLongClick = { onToggleFavorite(app) },
+                onLongClick = { onLongPressApp(app) },
             )
             .padding(horizontal = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -1450,8 +1780,9 @@ private fun AppIcon(
     val squircle = remember(size) { SquircleShape() }
 
     if (app.icon != null) {
+        val cachedBitmap = remember(app.componentKey) { app.icon.asImageBitmap() }
         Image(
-            bitmap = app.icon.asImageBitmap(),
+            bitmap = cachedBitmap,
             contentDescription = null,
             modifier = Modifier
                 .size(size)

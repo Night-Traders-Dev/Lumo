@@ -3,6 +3,8 @@ package dev.nighttraders.lumo.launcher.input
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Rect
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.inputmethodservice.InputMethodService
 import android.os.Build
 import android.os.VibrationEffect
@@ -14,6 +16,7 @@ import android.view.Gravity
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
+import android.view.WindowManager
 import android.view.inputmethod.CompletionInfo
 import android.view.inputmethod.EditorInfo
 import android.view.textservice.SentenceSuggestionsInfo
@@ -25,6 +28,8 @@ import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
+import android.widget.PopupWindow
+import android.widget.TextView
 import androidx.core.content.getSystemService
 import java.util.Locale
 import kotlin.math.abs
@@ -37,7 +42,7 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
 
     private var spellCheckerSession: SpellCheckerSession? = null
 
-    private lateinit var rootView: LinearLayout
+    private lateinit var rootView: SwipeTrailLinearLayout
     private lateinit var suggestionStrip: LinearLayout
     private lateinit var keysContainer: LinearLayout
 
@@ -84,10 +89,10 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
             orientation = LinearLayout.VERTICAL
         }
 
-        rootView = LinearLayout(this).apply {
+        rootView = SwipeTrailLinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.parseColor("#1B0F16"))
-            setPadding(dp(8), dp(10), dp(8), dp(10))
+            setBackgroundColor(Color.parseColor("#2B2B2B"))
+            setPadding(dp(4), dp(6), dp(4), dp(8))
 
             addView(
                 HorizontalScrollView(this@LumoInputMethodService).apply {
@@ -105,7 +110,7 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT,
                 ).apply {
-                    bottomMargin = dp(8)
+                    bottomMargin = dp(4)
                 },
             )
 
@@ -323,7 +328,7 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT,
             ).apply {
-                bottomMargin = dp(6)
+                bottomMargin = dp(4)
             }
 
             keys.forEach { key ->
@@ -336,25 +341,35 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
             text = spec.value
             isAllCaps = false
             setTextColor(Color.WHITE)
-            textSize = 16f
+            textSize = if (spec.isLetterKey) 18f else 14f
+            typeface = Typeface.DEFAULT
             gravity = Gravity.CENTER
-            minHeight = dp(52)
-            minimumHeight = dp(52)
-            setPadding(dp(4), dp(10), dp(4), dp(10))
-            backgroundTintList = ColorStateList.valueOf(
-                when {
-                    spec.isSpecial && spec.highlighted -> Color.parseColor("#FF6E40")
-                    spec.isSpecial -> Color.parseColor("#E95420")
-                    else -> Color.parseColor("#5E2750")
-                },
-            )
+            minHeight = dp(48)
+            minimumHeight = dp(48)
+            setPadding(dp(2), dp(8), dp(2), dp(8))
+            stateListAnimator = null
+            elevation = 0f
+
+            val keyBg = GradientDrawable().apply {
+                cornerRadius = dp(6).toFloat()
+                setColor(
+                    when {
+                        spec.isSpecial && spec.highlighted -> Color.parseColor("#E95420")
+                        spec.isSpecial -> Color.parseColor("#494949")
+                        else -> Color.parseColor("#3C3C3C")
+                    },
+                )
+            }
+            background = keyBg
+            backgroundTintList = null
+
             layoutParams = LinearLayout.LayoutParams(
                 0,
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 spec.weight,
             ).apply {
-                marginStart = dp(3)
-                marginEnd = dp(3)
+                marginStart = dp(2)
+                marginEnd = dp(2)
             }
 
             if (spec.isLetterKey) {
@@ -526,7 +541,7 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
         if (suggestions.isEmpty()) {
             suggestionStrip.addView(
                 createSuggestionButton(
-                    text = if (symbolMode) "Symbols ready" else "Type for suggestions",
+                    text = if (symbolMode) "" else "",
                     enabled = false,
                     primary = false,
                     onClick = {},
@@ -559,24 +574,34 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
             isAllCaps = false
             isEnabled = enabled
             gravity = Gravity.CENTER
-            setTextColor(if (enabled) Color.WHITE else Color.parseColor("#AAFFFFFF"))
+            setTextColor(if (enabled) Color.WHITE else Color.parseColor("#88FFFFFF"))
             textSize = 14f
-            minHeight = dp(42)
-            minimumHeight = dp(42)
-            backgroundTintList = ColorStateList.valueOf(
-                when {
-                    !enabled -> Color.parseColor("#241A25")
-                    primary -> Color.parseColor("#E95420")
-                    else -> Color.parseColor("#43214D")
-                },
-            )
+            typeface = Typeface.DEFAULT
+            minHeight = dp(38)
+            minimumHeight = dp(38)
+            stateListAnimator = null
+            elevation = 0f
+
+            val bg = GradientDrawable().apply {
+                cornerRadius = dp(8).toFloat()
+                setColor(
+                    when {
+                        !enabled -> Color.parseColor("#333333")
+                        primary -> Color.parseColor("#E95420")
+                        else -> Color.parseColor("#444444")
+                    },
+                )
+            }
+            background = bg
+            backgroundTintList = null
+
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT,
             ).apply {
-                marginEnd = dp(6)
+                marginEnd = dp(4)
             }
-            setPadding(dp(16), dp(8), dp(16), dp(8))
+            setPadding(dp(14), dp(6), dp(14), dp(6))
             setOnClickListener {
                 performKeyHaptic()
                 onClick()
@@ -764,16 +789,44 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
     }
 
     private fun findLetterKeyTarget(rawX: Float, rawY: Float): KeyTouchTarget? {
-        val hitRect = Rect()
-        return letterKeyTargets.firstOrNull { target ->
-            target.button.getGlobalVisibleRect(hitRect) &&
-                hitRect.contains(rawX.toInt(), rawY.toInt())
+        val location = IntArray(2)
+        val pad = dp(4)
+
+        // Exact hit test first
+        letterKeyTargets.firstOrNull { target ->
+            val btn = target.button
+            btn.getLocationOnScreen(location)
+            rawX >= location[0] - pad && rawX <= location[0] + btn.width + pad &&
+                rawY >= location[1] - pad && rawY <= location[1] + btn.height + pad
+        }?.let { return it }
+
+        // Fallback: nearest key within a reasonable distance
+        val maxDist = dp(32).toFloat()
+        var bestTarget: KeyTouchTarget? = null
+        var bestDist = Float.MAX_VALUE
+        letterKeyTargets.forEach { target ->
+            val btn = target.button
+            btn.getLocationOnScreen(location)
+            val centerX = location[0] + btn.width / 2f
+            val centerY = location[1] + btn.height / 2f
+            val dx = rawX - centerX
+            val dy = rawY - centerY
+            val dist = dx * dx + dy * dy
+            if (dist < bestDist) {
+                bestDist = dist
+                bestTarget = target
+            }
         }
+        val threshold = maxDist * maxDist
+        return if (bestDist <= threshold) bestTarget else null
     }
 
     private fun addSwipeValue(value: String) {
         if (swipeTrail.lastOrNull() != value) {
             swipeTrail += value
+            if (swipeInProgress) {
+                performKeyHaptic()
+            }
             swipePreviewSuggestions = wordEngine.swipeSuggestions(
                 rawTrace = swipeTrail.joinToString(separator = ""),
                 maxResults = 4,
@@ -800,9 +853,74 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
+    private var keyPreviewPopup: PopupWindow? = null
+
+    private fun showKeyPreview(anchorView: View, label: String) {
+        dismissKeyPreview()
+        val previewView = TextView(this).apply {
+            text = label
+            setTextColor(Color.WHITE)
+            textSize = 22f
+            typeface = Typeface.DEFAULT
+            gravity = Gravity.CENTER
+            setPadding(dp(16), dp(10), dp(16), dp(10))
+            background = GradientDrawable().apply {
+                cornerRadius = dp(8).toFloat()
+                setColor(Color.parseColor("#555555"))
+            }
+        }
+        previewView.measure(
+            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
+            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
+        )
+        val popup = PopupWindow(
+            previewView,
+            previewView.measuredWidth,
+            previewView.measuredHeight,
+            false,
+        ).apply {
+            isTouchable = false
+            isClippingEnabled = false
+        }
+        val location = IntArray(2)
+        anchorView.getLocationInWindow(location)
+        val xOffset = location[0] + (anchorView.width - previewView.measuredWidth) / 2
+        val yOffset = location[1] - previewView.measuredHeight - dp(6)
+        popup.showAtLocation(anchorView, Gravity.NO_GRAVITY, xOffset, yOffset)
+        keyPreviewPopup = popup
+    }
+
+    private fun dismissKeyPreview() {
+        keyPreviewPopup?.dismiss()
+        keyPreviewPopup = null
+    }
+
+    private fun localCoordinates(rawX: Float, rawY: Float): FloatArray {
+        val location = IntArray(2)
+        rootView.getLocationOnScreen(location)
+        return floatArrayOf(rawX - location[0], rawY - location[1])
+    }
+
+    private fun interpolateKeys(fromX: Float, fromY: Float, toX: Float, toY: Float) {
+        val steps = 4
+        for (step in 1 until steps) {
+            val fraction = step.toFloat() / steps
+            val midX = fromX + (toX - fromX) * fraction
+            val midY = fromY + (toY - fromY) * fraction
+            findLetterKeyTarget(midX, midY)?.let { target ->
+                if (swipeTrail.lastOrNull() != target.value) {
+                    swipeTrail += target.value
+                }
+            }
+        }
+    }
+
     private inner class LetterSwipeTouchListener(
         private val spec: KeySpec,
     ) : View.OnTouchListener {
+        private var lastMoveX = 0f
+        private var lastMoveY = 0f
+
         override fun onTouch(view: View, event: MotionEvent): Boolean =
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
@@ -810,13 +928,30 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
                     swipeTrail.clear()
                     swipeStartX = event.rawX
                     swipeStartY = event.rawY
+                    lastMoveX = event.rawX
+                    lastMoveY = event.rawY
                     addSwipeValue(spec.value.lowercase(Locale.getDefault()))
+                    showKeyPreview(view, spec.value)
+                    val local = localCoordinates(event.rawX, event.rawY)
+                    rootView.beginTrail(local[0], local[1])
                     true
                 }
 
                 MotionEvent.ACTION_MOVE -> {
+                    val local = localCoordinates(event.rawX, event.rawY)
+                    if (swipeInProgress) {
+                        rootView.extendTrail(local[0], local[1])
+                    }
+
+                    interpolateKeys(lastMoveX, lastMoveY, event.rawX, event.rawY)
+                    lastMoveX = event.rawX
+                    lastMoveY = event.rawY
+
                     findLetterKeyTarget(event.rawX, event.rawY)?.let { target ->
                         addSwipeValue(target.value)
+                        if (swipeInProgress) {
+                            showKeyPreview(target.button, target.displayValue)
+                        }
                     }
 
                     if (!swipeInProgress &&
@@ -825,11 +960,16 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
                             swipeTrail.size > 1)
                     ) {
                         swipeInProgress = true
+                        val startLocal = localCoordinates(swipeStartX, swipeStartY)
+                        rootView.beginTrail(startLocal[0], startLocal[1])
+                        rootView.extendTrail(local[0], local[1])
                     }
                     true
                 }
 
                 MotionEvent.ACTION_UP -> {
+                    dismissKeyPreview()
+                    rootView.clearTrail()
                     if (swipeInProgress && swipeTrail.size > 1) {
                         commitSwipeTrail()
                     } else {
@@ -842,6 +982,8 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
                 }
 
                 MotionEvent.ACTION_CANCEL -> {
+                    dismissKeyPreview()
+                    rootView.clearTrail()
                     swipeTrail.clear()
                     swipePreviewSuggestions = emptyList()
                     refreshSuggestionStrip()

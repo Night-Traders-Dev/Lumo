@@ -89,6 +89,9 @@ class LumoNotificationListenerService : NotificationListenerService() {
                 ?: return Result.failure(IllegalStateException("Notification listener is not connected"))
             val sbn = listener.activeNotifications?.firstOrNull { it.key == key }
                 ?: return Result.success(false)
+
+            // Prefer contentIntent (deep links to specific content like SMS conversation)
+            // Fall back to fullScreenIntent (used by calls, alarms)
             val intent = sbn.notification.contentIntent ?: sbn.notification.fullScreenIntent
                 ?: return Result.success(false)
 
