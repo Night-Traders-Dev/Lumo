@@ -13,7 +13,9 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
 import dev.nighttraders.lumo.launcher.ui.theme.LumoLauncherTheme
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class TerminalActivity : ComponentActivity() {
     private val session by lazy { TerminalSession(lifecycleScope, applicationContext) }
@@ -27,10 +29,12 @@ class TerminalActivity : ComponentActivity() {
         enableEdgeToEdge()
         configureSystemBars()
 
-        // Collect output and feed to buffer
+        // Collect output and feed to buffer (parse on Default dispatcher, update version on Main)
         lifecycleScope.launch {
             session.output.collect { text ->
-                buffer.process(text)
+                withContext(Dispatchers.Default) {
+                    buffer.process(text)
+                }
                 bufferVersion = buffer.version
             }
         }

@@ -1,5 +1,6 @@
 package dev.nighttraders.lumo.launcher.lockscreen
 
+import android.os.Build
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.LinearEasing
@@ -8,6 +9,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.withInfiniteAnimationFrameMillis
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
@@ -38,6 +40,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -48,6 +51,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ShaderBrush
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
@@ -165,19 +169,26 @@ fun LumoLockScreenScreen(
         }
     }
 
+    // On API 33+ the GPU shader renders its own gradient; on older devices use Brush
+    val bgModifier = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        Modifier.background(Color(0xFF2C001E)) // solid fallback behind shader
+    } else {
+        Modifier.background(
+            brush = Brush.verticalGradient(
+                colors = listOf(
+                    Color(0xFF2C001E),
+                    Color(0xFF5E2750),
+                    Color(0xFFAA3926),
+                    Color(0xFF2C001E),
+                ),
+            ),
+        )
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                brush = Brush.verticalGradient(
-                    colors = listOf(
-                        Color(0xFF2C001E), // Ubuntu aubergine
-                        Color(0xFF5E2750), // mid purple
-                        Color(0xFFAA3926), // warm orange-brown
-                        Color(0xFF2C001E),
-                    ),
-                ),
-            )
+            .then(bgModifier)
             .pointerInput(showPinEntry) {
                 if (!showPinEntry) {
                     var totalDrag = 0f
@@ -335,30 +346,65 @@ fun LumoLockScreenScreen(
 // ── Ubuntu Touch bokeh circles ──────────────────────────────────────────────
 
 /**
- * Large translucent orange/red circles orbiting around the center of the screen,
- * matching the Ubuntu Touch lock screen bokeh effect. The circles orbit at the
- * same radius as the infographic ring but are much larger, creating the
- * characteristic overlapping bokeh wreath.
+ * GPU-accelerated Ubuntu Touch bokeh effect (API 33+) with CPU Canvas fallback.
+ * On supported devices, the entire effect (background gradient + 19 orbiting bokeh circles)
+ * runs as a single AGSL fragment shader on the GPU.
  */
 @Composable
 private fun UbuntuBokehBackground(modifier: Modifier = Modifier) {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        GpuBokehBackground(modifier)
+    } else {
+        CpuBokehBackground(modifier)
+    }
+}
+
+/**
+ * GPU path: AGSL shader renders the entire bokeh effect per-pixel on the GPU.
+ */
+@Composable
+private fun GpuBokehBackground(modifier: Modifier = Modifier) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+
+    val shader = remember { BokehShader.create() }
+    val shaderBrush = remember(shader) { ShaderBrush(shader) }
+    var time by remember { mutableFloatStateOf(0f) }
+
+    LaunchedEffect(Unit) {
+        val start = withInfiniteAnimationFrameMillis { it }
+        while (true) {
+            val now = withInfiniteAnimationFrameMillis { it }
+            time = (now - start) / 1000f
+        }
+    }
+
+    Canvas(modifier = modifier) {
+        shader.setFloatUniform("iTime", time)
+        shader.setFloatUniform("iResolution", size.width, size.height)
+        drawRect(brush = shaderBrush)
+    }
+}
+
+/**
+ * CPU fallback: original Canvas-based bokeh for devices below API 33.
+ */
+@Composable
+private fun CpuBokehBackground(modifier: Modifier = Modifier) {
     data class Bokeh(
         val startDeg: Float,
-        val orbitFraction: Float,  // fraction of min(width,height)/2
-        val radiusFraction: Float, // circle size as fraction of min(width,height)/2
+        val orbitFraction: Float,
+        val radiusFraction: Float,
         val alpha: Float,
         val durationMs: Int,
     )
 
     val bokehs = remember {
         listOf(
-            // Inner orbit — slightly inside the infographic ring
             Bokeh(0f, 0.32f, 0.22f, 0.25f, 40_000),
             Bokeh(72f, 0.30f, 0.20f, 0.22f, 44_000),
             Bokeh(144f, 0.34f, 0.24f, 0.28f, 38_000),
             Bokeh(216f, 0.31f, 0.21f, 0.20f, 46_000),
             Bokeh(288f, 0.33f, 0.23f, 0.26f, 42_000),
-            // Main orbit — overlapping the infographic ring
             Bokeh(20f, 0.45f, 0.30f, 0.30f, 50_000),
             Bokeh(65f, 0.48f, 0.34f, 0.28f, 55_000),
             Bokeh(110f, 0.44f, 0.28f, 0.25f, 48_000),
@@ -367,7 +413,6 @@ private fun UbuntuBokehBackground(modifier: Modifier = Modifier) {
             Bokeh(245f, 0.43f, 0.26f, 0.22f, 54_000),
             Bokeh(290f, 0.49f, 0.34f, 0.30f, 50_000),
             Bokeh(335f, 0.47f, 0.30f, 0.26f, 58_000),
-            // Outer orbit — beyond the ring, large and diffuse
             Bokeh(30f, 0.62f, 0.28f, 0.20f, 65_000),
             Bokeh(90f, 0.66f, 0.30f, 0.18f, 70_000),
             Bokeh(150f, 0.60f, 0.26f, 0.16f, 62_000),
@@ -392,11 +437,11 @@ private fun UbuntuBokehBackground(modifier: Modifier = Modifier) {
 
     val colors = remember {
         listOf(
-            Color(0xFFE95420), // Ubuntu orange
-            Color(0xFFDD4814), // darker orange
-            Color(0xFFCF3721), // red-orange
-            Color(0xFFB83018), // deep red
-            Color(0xFFED764D), // light orange
+            Color(0xFFE95420),
+            Color(0xFFDD4814),
+            Color(0xFFCF3721),
+            Color(0xFFB83018),
+            Color(0xFFED764D),
         )
     }
 
@@ -412,16 +457,13 @@ private fun UbuntuBokehBackground(modifier: Modifier = Modifier) {
             val bx = cx + orbitR * cos(angle).toFloat()
             val by = cy + orbitR * sin(angle).toFloat()
             val r = halfMin * bokeh.radiusFraction
-
             val color = colors[i % colors.size]
 
-            // Soft outer glow
             drawCircle(
                 color = color.copy(alpha = bokeh.alpha * 0.25f),
                 radius = r * 1.5f,
                 center = Offset(bx, by),
             )
-            // Main filled circle
             drawCircle(
                 color = color.copy(alpha = bokeh.alpha),
                 radius = r,

@@ -1,19 +1,28 @@
 package dev.nighttraders.lumo.launcher.messaging
 
+import android.app.Activity
+import android.app.PendingIntent
+import android.content.BroadcastReceiver
 import android.content.ContentResolver
 import android.content.ContentValues
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.database.Cursor
 import android.net.Uri
+import android.os.Build
 import android.provider.ContactsContract
 import android.provider.Telephony
 import android.telephony.SmsManager
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import kotlin.coroutines.resume
 
 data class SmsConversation(
     val threadId: Long,
@@ -326,16 +335,47 @@ class SmsRepository(private val context: Context) {
     // ── Send SMS ─────────────────────────────────────────────────────────────
 
     suspend fun sendSms(address: String, body: String): Result<Unit> = withContext(Dispatchers.IO) {
-        runCatching {
-            val smsManager = context.getSystemService(SmsManager::class.java)
-                ?: throw IllegalStateException("SMS not available")
-            val parts = smsManager.divideMessage(body)
-            if (parts.size == 1) {
-                smsManager.sendTextMessage(address, null, body, null, null)
-            } else {
-                smsManager.sendMultipartTextMessage(address, null, parts, null, null)
+        val smsManager = context.getSystemService(SmsManager::class.java)
+            ?: return@withContext Result.failure(IllegalStateException("SMS not available"))
+        val parts = smsManager.divideMessage(body)
+
+        // Use a PendingIntent + BroadcastReceiver to track actual send result
+        val result = withTimeoutOrNull(15_000L) {
+            suspendCancellableCoroutine { cont ->
+                val action = "dev.nighttraders.lumo.SMS_SENT_${System.nanoTime()}"
+                val receiver = object : BroadcastReceiver() {
+                    override fun onReceive(ctx: Context, intent: Intent) {
+                        context.unregisterReceiver(this)
+                        if (resultCode == Activity.RESULT_OK) {
+                            cont.resume(Result.success(Unit))
+                        } else {
+                            cont.resume(Result.failure(Exception("SMS send failed (code $resultCode)")))
+                        }
+                    }
+                }
+                val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    Context.RECEIVER_NOT_EXPORTED
+                } else 0
+                context.registerReceiver(receiver, IntentFilter(action), flags)
+                cont.invokeOnCancellation {
+                    runCatching { context.unregisterReceiver(receiver) }
+                }
+
+                val sentIntent = PendingIntent.getBroadcast(
+                    context, 0, Intent(action),
+                    PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE,
+                )
+
+                if (parts.size == 1) {
+                    smsManager.sendTextMessage(address, null, body, sentIntent, null)
+                } else {
+                    val sentIntents = ArrayList(parts.map { sentIntent })
+                    smsManager.sendMultipartTextMessage(address, null, parts, sentIntents, null)
+                }
             }
-        }
+        } ?: Result.failure(Exception("SMS send timed out"))
+
+        result
     }
 
     // ── Send MMS ─────────────────────────────────────────────────────────────
@@ -345,16 +385,17 @@ class SmsRepository(private val context: Context) {
         body: String,
         imageUri: Uri,
     ): Result<Unit> = withContext(Dispatchers.IO) {
+        var pduFile: java.io.File? = null
         runCatching {
             // Build MMS PDU
-            val pduFile = java.io.File(context.cacheDir, "mms_send_${System.currentTimeMillis()}.dat")
+            pduFile = java.io.File(context.cacheDir, "mms_send_${System.currentTimeMillis()}.dat")
             val pdu = buildMmsPdu(address, body, imageUri)
-            pduFile.writeBytes(pdu)
+            pduFile!!.writeBytes(pdu)
 
             val contentUri = androidx.core.content.FileProvider.getUriForFile(
                 context,
                 "${context.packageName}.mms_provider",
-                pduFile,
+                pduFile!!,
             )
 
             val smsManager = context.getSystemService(SmsManager::class.java)
@@ -367,6 +408,24 @@ class SmsRepository(private val context: Context) {
                 null,
                 null,
             )
+        }.also {
+            // Clean up PDU file regardless of success or failure
+            pduFile?.delete()
+            // Also clean up any stale PDU files from previous sends
+            cleanupStaleMmsCache()
+        }
+    }
+
+    private fun cleanupStaleMmsCache() {
+        runCatching {
+            val cutoff = System.currentTimeMillis() - 60_000L // older than 1 minute
+            context.cacheDir.listFiles()?.forEach { file ->
+                if (file.name.startsWith("mms_send_") && file.name.endsWith(".dat") &&
+                    file.lastModified() < cutoff
+                ) {
+                    file.delete()
+                }
+            }
         }
     }
 

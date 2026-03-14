@@ -120,10 +120,9 @@ class MessagingActivity : ComponentActivity() {
                                 if (result.isSuccess) {
                                     showNewMessage = false
                                     pendingImageUri = null
-                                    kotlinx.coroutines.delay(500)
                                     loadConversations()
                                 } else {
-                                    Toast.makeText(this@MessagingActivity, "Failed to send message", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(this@MessagingActivity, "Failed to send: ${result.exceptionOrNull()?.message}", Toast.LENGTH_SHORT).show()
                                 }
                             }
                         },
@@ -161,13 +160,9 @@ class MessagingActivity : ComponentActivity() {
                                     pendingImageUri = null
                                     if (showNewMessage) {
                                         showNewMessage = false
-                                        kotlinx.coroutines.delay(500)
                                         loadConversations()
                                     } else {
-                                        currentThread?.let {
-                                            kotlinx.coroutines.delay(500)
-                                            loadMessages(it.threadId)
-                                        }
+                                        currentThread?.let { loadMessages(it.threadId) }
                                     }
                                 } else {
                                     Toast.makeText(
@@ -228,10 +223,9 @@ class MessagingActivity : ComponentActivity() {
         lifecycleScope.launch {
             val result = smsRepository.sendSms(address, body)
             if (result.isSuccess) {
-                kotlinx.coroutines.delay(500)
                 loadMessages(threadId)
             } else {
-                Toast.makeText(this@MessagingActivity, "Failed to send message", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@MessagingActivity, "Failed to send: ${result.exceptionOrNull()?.message}", Toast.LENGTH_SHORT).show()
             }
         }
     }

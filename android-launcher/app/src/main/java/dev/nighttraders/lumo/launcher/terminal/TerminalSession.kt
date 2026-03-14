@@ -101,24 +101,28 @@ class TerminalSession(
     }
 
     fun write(data: String) {
+        // Write to the process stdin
         try {
             outputStream?.let { os ->
                 os.write(data.toByteArray())
                 os.flush()
             }
-            // Local echo — without a PTY, the shell won't echo input back
-            if (localEcho) {
-                scope.launch {
-                    for (c in data) {
-                        when (c) {
-                            '\u007F', '\b' -> _output.emit("\b \b") // Backspace: erase character
-                            '\r', '\n' -> _output.emit("\r\n")
-                            else -> if (c.code >= 32) _output.emit(c.toString())
-                        }
+        } catch (_: Exception) {}
+
+        // Local echo — without a PTY, the shell won't echo input back.
+        // This is deliberately outside the try-catch above so echo works
+        // even if the process pipe is broken.
+        if (localEcho) {
+            scope.launch {
+                for (c in data) {
+                    when (c) {
+                        '\u007F', '\b' -> _output.emit("\b \b") // Backspace: erase character
+                        '\r', '\n' -> _output.emit("\r\n")
+                        else -> if (c.code >= 32) _output.emit(c.toString())
                     }
                 }
             }
-        } catch (_: Exception) {}
+        }
     }
 
     fun write(data: ByteArray) {
