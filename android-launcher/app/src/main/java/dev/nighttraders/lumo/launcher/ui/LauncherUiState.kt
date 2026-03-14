@@ -13,13 +13,21 @@ data class LauncherUiState(
     val isLoading: Boolean = true,
     val apps: List<LaunchableApp> = emptyList(),
     val favoriteKeys: Set<String> = emptySet(),
+    val orderedFavoriteKeys: List<String> = emptyList(),
     val recentAppKeys: List<String> = emptyList(),
     val notifications: List<LauncherNotification> = emptyList(),
     val headsUpNotification: LauncherNotification? = null,
     val hasNotificationAccess: Boolean = false,
 ) {
+    /** Favorites in user-defined order. */
     val favorites: List<LaunchableApp>
-        get() = apps.filter { app -> favoriteKeys.contains(app.componentKey) }
+        get() {
+            val appsByKey = apps.associateBy { it.componentKey }
+            val ordered = orderedFavoriteKeys.mapNotNull { appsByKey[it] }
+            return ordered.ifEmpty {
+                apps.filter { app -> favoriteKeys.contains(app.componentKey) }
+            }
+        }
 
     val featuredApps: List<LaunchableApp>
         get() = favorites.ifEmpty { apps.take(5) }.take(5)

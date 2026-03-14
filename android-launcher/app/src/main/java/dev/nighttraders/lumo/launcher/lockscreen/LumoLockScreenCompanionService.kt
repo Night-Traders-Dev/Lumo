@@ -114,7 +114,7 @@ class LumoLockScreenCompanionService : Service() {
         PendingIntent.getActivity(
             this,
             1001,
-            LockScreenActivity.createIntent(this),
+            LockScreenActivity.createWakeIntent(this),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 

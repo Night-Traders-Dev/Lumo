@@ -31,7 +31,9 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     private val loading = MutableStateFlow(true)
     private val apps = MutableStateFlow<List<LaunchableApp>>(emptyList())
     private var appsLoadedOnce = false
+    private var appRefreshJob: kotlinx.coroutines.Job? = null
     private val favoriteKeys = repository.observeFavoriteKeys()
+    private val orderedFavoriteKeys = repository.observeOrderedFavoriteKeys()
     private val recentAppKeys = repository.recentAppKeysFlow
     private val defaultHome = MutableStateFlow(false)
     private val notificationAccess = MutableStateFlow(application.hasNotificationListenerAccess())
@@ -56,6 +58,8 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         state.copy(hasNotificationAccess = hasAccess)
     }.combine(recentAppKeys) { state, recentKeys ->
         state.copy(recentAppKeys = recentKeys)
+    }.combine(orderedFavoriteKeys) { state, ordered ->
+        state.copy(orderedFavoriteKeys = ordered)
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.Eagerly,
@@ -85,6 +89,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             repository.seedFavoritesIfEmpty(installedApps)
             apps.value = installedApps
             loading.value = false
+            appsLoadedOnce = true
             // Now that apps are loaded, resolve recent app keys
             launch(Dispatchers.IO) { repository.refreshRecentApps() }
         }
@@ -97,7 +102,10 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
      */
     fun refreshApps(force: Boolean = false) {
         if (appsLoadedOnce && !force) return
-        viewModelScope.launch {
+        // Cancel any in-flight refresh (coalesces burst package-change events)
+        appRefreshJob?.cancel()
+        appRefreshJob = viewModelScope.launch {
+            if (force) delay(300) // Debounce burst package-change broadcasts
             loading.value = true
             val installedApps = repository.loadApps()
             repository.seedFavoritesIfEmpty(installedApps)
@@ -110,6 +118,18 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     fun toggleFavorite(app: LaunchableApp) {
         viewModelScope.launch {
             repository.toggleFavorite(app.componentKey)
+        }
+    }
+
+    fun addFavorite(componentKey: String) {
+        viewModelScope.launch {
+            repository.addFavorite(componentKey)
+        }
+    }
+
+    fun reorderFavorites(orderedKeys: List<String>) {
+        viewModelScope.launch {
+            repository.reorderFavorites(orderedKeys)
         }
     }
 

@@ -18,6 +18,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -158,6 +159,8 @@ fun LumoLauncherApp(
     onSnoozeNotification: (LauncherNotification, Long) -> Result<Unit>,
     onDismissHeadsUpNotification: (String) -> Unit,
     onToggleFavorite: (LaunchableApp) -> Unit,
+    onAddFavorite: (String) -> Unit = {},
+    onReorderFavorites: (List<String>) -> Unit = {},
     onOpenAppInfo: (LaunchableApp) -> Unit,
     onRequestUninstall: (LaunchableApp) -> Unit,
     onRefresh: () -> Unit,
@@ -527,54 +530,57 @@ fun LumoLauncherApp(
                     )
                 }
 
-                if (railVisible) {
-                    val dismissInteraction = remember { MutableInteractionSource() }
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clickable(
-                                interactionSource = dismissInteraction,
-                                indication = null,
-                                onClick = { railVisible = false },
-                            ),
-                    )
-                }
-
-                androidx.compose.animation.AnimatedVisibility(
-                    visible = railVisible,
-                    modifier = Modifier
-                        .align(Alignment.CenterStart)
-                        .padding(start = 2.dp, top = 6.dp, bottom = 8.dp),
-                    enter = slideInHorizontally(
-                        initialOffsetX = { -it },
-                        animationSpec = spring(
-                            dampingRatio = Spring.DampingRatioLowBouncy,
-                            stiffness = Spring.StiffnessMediumLow,
-                        ),
-                    ) + fadeIn(animationSpec = tween(200)),
-                    exit = slideOutHorizontally(
-                        targetOffsetX = { -it },
-                        animationSpec = spring(
-                            dampingRatio = Spring.DampingRatioNoBouncy,
-                            stiffness = Spring.StiffnessMedium,
-                        ),
-                    ) + fadeOut(animationSpec = tween(150)),
-                ) {
-                    UbuntuTouchLauncherRail(
-                        appsVisible = appsVisible,
-                        railWidthDp = settings.dashRailWidthDp,
-                        iconSizeDp = settings.dashIconSizeDp,
-                        apps = launcherApps,
-                        onOpenApps = { if (appsVisible) goHome() else openApps() },
-                        onOpenSettings = onOpenSettings,
-                        onLaunchApp = { app ->
-                            railVisible = false
-                            onLaunchApp(app)
-                        },
-                        onToggleFavorite = onToggleFavorite,
-                    )
-                }
             }
+        }
+
+        // Dash rail — flush against the left edge, below status bar
+        if (railVisible) {
+            val dismissInteraction = remember { MutableInteractionSource() }
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clickable(
+                        interactionSource = dismissInteraction,
+                        indication = null,
+                        onClick = { railVisible = false },
+                    ),
+            )
+        }
+
+        androidx.compose.animation.AnimatedVisibility(
+            visible = railVisible,
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .windowInsetsPadding(WindowInsets.systemBars),
+            enter = slideInHorizontally(
+                initialOffsetX = { -it },
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioLowBouncy,
+                    stiffness = Spring.StiffnessMediumLow,
+                ),
+            ) + fadeIn(animationSpec = tween(200)),
+            exit = slideOutHorizontally(
+                targetOffsetX = { -it },
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioNoBouncy,
+                    stiffness = Spring.StiffnessMedium,
+                ),
+            ) + fadeOut(animationSpec = tween(150)),
+        ) {
+            UbuntuTouchLauncherRail(
+                appsVisible = appsVisible,
+                railWidthDp = settings.dashRailWidthDp,
+                iconSizeDp = settings.dashIconSizeDp,
+                apps = launcherApps,
+                onOpenApps = { if (appsVisible) goHome() else openApps() },
+                onOpenSettings = onOpenSettings,
+                onLaunchApp = { app ->
+                    railVisible = false
+                    onLaunchApp(app)
+                },
+                onToggleFavorite = onToggleFavorite,
+                onReorderFavorites = onReorderFavorites,
+            )
         }
 
         // Scrim behind indicators
@@ -1651,11 +1657,17 @@ private fun UbuntuTouchLauncherRail(
     onOpenSettings: () -> Unit,
     onLaunchApp: (LaunchableApp) -> Unit,
     onToggleFavorite: (LaunchableApp) -> Unit,
+    onReorderFavorites: (List<String>) -> Unit = {},
 ) {
     val dockSquircle = remember { SquircleShape() }
-
-    // Ensure rail is wide enough for icons + padding
     val effectiveRailWidth = maxOf(railWidthDp, iconSizeDp + 16)
+    val itemHeightDp = iconSizeDp + 6 // icon size + spacing
+
+    // Drag-and-drop reorder state
+    var draggedIndex by remember { mutableStateOf(-1) }
+    var dragOffsetY by remember { mutableStateOf(0f) }
+    val currentOrder = remember(apps) { apps.map { it.componentKey }.toMutableList() }
+    var displayOrder by remember(apps) { mutableStateOf(apps) }
 
     Surface(
         modifier = Modifier
@@ -1670,7 +1682,7 @@ private fun UbuntuTouchLauncherRail(
                 .padding(vertical = 8.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            // Pinned / favorite apps
+            // Pinned / favorite apps with drag-and-drop reorder
             Column(
                 modifier = Modifier
                     .weight(1f)
@@ -1678,14 +1690,62 @@ private fun UbuntuTouchLauncherRail(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                apps.forEach { app ->
-                    DockAppIcon(
-                        app = app,
-                        sizeDp = iconSizeDp,
-                        squircle = dockSquircle,
-                        onLaunchApp = onLaunchApp,
-                        onToggleFavorite = onToggleFavorite,
-                    )
+                displayOrder.forEachIndexed { index, app ->
+                    val isDragging = draggedIndex == index
+                    val yOffset = if (isDragging) dragOffsetY else 0f
+
+                    Box(
+                        modifier = Modifier
+                            .graphicsLayer {
+                                translationY = yOffset
+                                alpha = if (isDragging) 0.8f else 1f
+                                scaleX = if (isDragging) 1.1f else 1f
+                                scaleY = if (isDragging) 1.1f else 1f
+                            }
+                            .pointerInput(index, displayOrder.size) {
+                                val itemHeightPx = itemHeightDp * density
+                                detectDragGesturesAfterLongPress(
+                                    onDragStart = {
+                                        draggedIndex = index
+                                        dragOffsetY = 0f
+                                    },
+                                    onDrag = { change, dragAmount ->
+                                        change.consume()
+                                        dragOffsetY += dragAmount.y
+                                        // Calculate target index based on drag offset
+                                        val targetIndex = (index + (dragOffsetY / itemHeightPx).toInt())
+                                            .coerceIn(0, displayOrder.size - 1)
+                                        if (targetIndex != index && targetIndex != draggedIndex) {
+                                            val mutableList = displayOrder.toMutableList()
+                                            val item = mutableList.removeAt(draggedIndex)
+                                            mutableList.add(targetIndex, item)
+                                            displayOrder = mutableList
+                                            // Adjust offset so the dragged item stays under finger
+                                            dragOffsetY -= (targetIndex - draggedIndex) * itemHeightPx
+                                            draggedIndex = targetIndex
+                                        }
+                                    },
+                                    onDragEnd = {
+                                        draggedIndex = -1
+                                        dragOffsetY = 0f
+                                        onReorderFavorites(displayOrder.map { it.componentKey })
+                                    },
+                                    onDragCancel = {
+                                        draggedIndex = -1
+                                        dragOffsetY = 0f
+                                        displayOrder = apps // reset to original
+                                    },
+                                )
+                            },
+                    ) {
+                        DockAppIcon(
+                            app = app,
+                            sizeDp = iconSizeDp,
+                            squircle = dockSquircle,
+                            onLaunchApp = onLaunchApp,
+                            onToggleFavorite = onToggleFavorite,
+                        )
+                    }
                 }
             }
 

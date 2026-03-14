@@ -12,12 +12,13 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import dev.nighttraders.lumo.launcher.notifications.LauncherNotification
+import dev.nighttraders.lumo.launcher.weather.OpenMeteoWeatherProvider
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
 /**
  * Builds the list of metric messages displayed inside the InfoGraphic circle.
- * Sources: notifications (count, messaging, weather apps, email apps),
+ * Sources: Open-Meteo weather, notifications (count, messaging, email apps),
  * system status (battery, network), step counter sensor, and calendar facts.
  */
 fun buildInfoGraphicMetrics(
@@ -26,9 +27,22 @@ fun buildInfoGraphicMetrics(
     stepCount: Int?,
     today: LocalDate = LocalDate.now(),
 ): List<InfoGraphicMetric> = buildList {
+    // 1. Weather from Open-Meteo API (preferred) or weather app notifications (fallback)
+    val openMeteoWeather = OpenMeteoWeatherProvider.weather.value
+    if (openMeteoWeather != null) {
+        add(InfoGraphicMetric(text = openMeteoWeather.displayText()))
+        // Additional weather details
+        add(InfoGraphicMetric(text = "Humidity: ${openMeteoWeather.humidity}%"))
+    } else {
+        val weatherText = extractWeatherFromNotifications(notifications)
+        if (weatherText != null) {
+            add(InfoGraphicMetric(text = weatherText))
+        }
+    }
+
     val notificationCount = notifications.size
 
-    // 1. Notification count
+    // 2. Notification count
     if (notificationCount > 0) {
         add(
             InfoGraphicMetric(
@@ -38,7 +52,7 @@ fun buildInfoGraphicMetrics(
         )
     }
 
-    // 2. Messages received
+    // 3. Messages received
     val messagingCount = notifications.count { it.isMessaging }
     if (messagingCount > 0) {
         add(
@@ -48,7 +62,7 @@ fun buildInfoGraphicMetrics(
         )
     }
 
-    // 3. Unread email count (from email app notifications)
+    // 4. Unread email count (from email app notifications)
     val emailCount = notifications.count { notification ->
         EMAIL_PACKAGES.any { notification.packageName.contains(it, ignoreCase = true) }
     }
@@ -60,7 +74,7 @@ fun buildInfoGraphicMetrics(
         )
     }
 
-    // 4. Latest email subject
+    // 5. Latest email subject
     notifications.firstOrNull { notification ->
         EMAIL_PACKAGES.any { notification.packageName.contains(it, ignoreCase = true) }
     }?.let { email ->
@@ -68,12 +82,6 @@ fun buildInfoGraphicMetrics(
         if (subject.isNotBlank()) {
             add(InfoGraphicMetric(text = subject, truncate = true))
         }
-    }
-
-    // 5. Weather from weather app notifications
-    val weatherText = extractWeatherFromNotifications(notifications)
-    if (weatherText != null) {
-        add(InfoGraphicMetric(text = weatherText))
     }
 
     // 6. Step count

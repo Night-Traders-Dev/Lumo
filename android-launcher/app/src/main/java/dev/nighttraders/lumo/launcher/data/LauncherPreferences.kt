@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.stringSetPreferencesKey
 
 internal object LauncherPreferences {
     val favoriteComponents = stringSetPreferencesKey("favorite_components")
+    val favoriteOrder = stringPreferencesKey("favorite_order") // pipe-separated ordered keys
     val recentAppKeys = stringPreferencesKey("recent_app_keys")
     val overlaySidebarEnabled = booleanPreferencesKey("overlay_sidebar_enabled")
     val lockScreenCompanionEnabled = booleanPreferencesKey("lock_screen_companion_enabled")

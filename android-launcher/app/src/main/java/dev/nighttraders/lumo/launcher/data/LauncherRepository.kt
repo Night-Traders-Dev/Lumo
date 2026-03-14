@@ -31,6 +31,7 @@ import java.util.Locale
 private const val ICON_SIZE_DP = 56
 private const val MAX_RECENT_APPS = 12
 private const val RECENT_SEPARATOR = "|"
+private const val FAVORITE_SEPARATOR = "|"
 private const val RECENT_WINDOW_MS = 2L * 60 * 60 * 1000 // 2 hours — keeps recents fresh
 
 private val Context.launcherPreferences by preferencesDataStore(name = "lumo_launcher")
@@ -54,6 +55,21 @@ class LauncherRepository(private val context: Context) {
     fun observeFavoriteKeys(): Flow<Set<String>> =
         context.launcherPreferences.data.map { preferences ->
             preferences[LauncherPreferences.favoriteComponents].orEmpty()
+        }
+
+    /** Ordered favorite keys — preserves user-defined order for the dash rail. */
+    fun observeOrderedFavoriteKeys(): Flow<List<String>> =
+        context.launcherPreferences.data.map { preferences ->
+            val order = preferences[LauncherPreferences.favoriteOrder].orEmpty()
+            val set = preferences[LauncherPreferences.favoriteComponents].orEmpty()
+            if (order.isBlank()) {
+                set.toList()
+            } else {
+                val ordered = order.split(FAVORITE_SEPARATOR).filter { it in set }
+                // Append any keys in the set that are not yet in the order list
+                val remaining = set - ordered.toSet()
+                ordered + remaining
+            }
         }
 
     fun observeOverlaySidebarEnabled(): Flow<Boolean> =
@@ -129,10 +145,35 @@ class LauncherRepository(private val context: Context) {
     suspend fun toggleFavorite(componentKey: String) {
         context.launcherPreferences.edit { preferences ->
             val current = preferences[LauncherPreferences.favoriteComponents].orEmpty().toMutableSet()
+            val order = preferences[LauncherPreferences.favoriteOrder].orEmpty()
+                .split(FAVORITE_SEPARATOR).filter { it.isNotBlank() }.toMutableList()
             if (!current.add(componentKey)) {
                 current.remove(componentKey)
+                order.remove(componentKey)
+            } else {
+                order.add(componentKey)
             }
             preferences[LauncherPreferences.favoriteComponents] = current
+            preferences[LauncherPreferences.favoriteOrder] = order.joinToString(FAVORITE_SEPARATOR)
+        }
+    }
+
+    suspend fun addFavorite(componentKey: String) {
+        context.launcherPreferences.edit { preferences ->
+            val current = preferences[LauncherPreferences.favoriteComponents].orEmpty().toMutableSet()
+            val order = preferences[LauncherPreferences.favoriteOrder].orEmpty()
+                .split(FAVORITE_SEPARATOR).filter { it.isNotBlank() }.toMutableList()
+            if (current.add(componentKey)) {
+                order.add(componentKey)
+                preferences[LauncherPreferences.favoriteComponents] = current
+                preferences[LauncherPreferences.favoriteOrder] = order.joinToString(FAVORITE_SEPARATOR)
+            }
+        }
+    }
+
+    suspend fun reorderFavorites(orderedKeys: List<String>) {
+        context.launcherPreferences.edit { preferences ->
+            preferences[LauncherPreferences.favoriteOrder] = orderedKeys.joinToString(FAVORITE_SEPARATOR)
         }
     }
 

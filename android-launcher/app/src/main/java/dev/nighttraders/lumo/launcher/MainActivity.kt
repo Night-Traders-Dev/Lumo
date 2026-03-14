@@ -32,6 +32,7 @@ import dev.nighttraders.lumo.launcher.lockscreen.LockScreenActivity
 import dev.nighttraders.lumo.launcher.lockscreen.LumoLockState
 import dev.nighttraders.lumo.launcher.lockscreen.LumoUnlockReceiver
 import dev.nighttraders.lumo.launcher.overlay.LumoGestureSidebarService
+import dev.nighttraders.lumo.launcher.weather.OpenMeteoWeatherProvider
 import dev.nighttraders.lumo.launcher.settings.SettingsActivity
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.nighttraders.lumo.launcher.notifications.hasNotificationListenerAccess
@@ -47,12 +48,14 @@ class MainActivity : ComponentActivity() {
     private val repository by lazy { LauncherRepository(applicationContext) }
     private val requestedPageIndex = mutableIntStateOf(START_PAGE_HOME)
     private val navigationRequestId = mutableIntStateOf(0)
-    private val lockScreenSecurityType = mutableStateOf("none")
+    // Start as "loading" so the dash stays locked until we know the real security state
+    private val lockScreenSecurityType = mutableStateOf("loading")
     private val lockScreenSecurityHash = mutableStateOf("")
     private val lockScreenSecuritySalt = mutableStateOf("")
     private val isFlashlightOn = mutableStateOf(false)
     private var torchCallback: CameraManager.TorchCallback? = null
-    private val screenReceiver = LumoUnlockReceiver()
+    private var screenReceiver: LumoUnlockReceiver? = null
+    private var screenReceiverRegistered = false
     private val packageChangeReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             viewModel.refreshApps(force = true)
@@ -64,6 +67,10 @@ class MainActivity : ComponentActivity() {
         }
     private val requestActivityRecognition =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) {}
+    private val requestLocationPermission =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (granted) refreshWeather()
+        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -74,11 +81,12 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         configureSystemBars()
         refreshDefaultHomeState()
-        registerScreenReceiver()
         registerPackageChangeReceiver()
         registerFlashlightCallback()
         requestActivityRecognitionIfNeeded()
+        requestLocationIfNeeded()
         loadSecurityState()
+        refreshWeather()
 
         setContent {
             val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -95,9 +103,10 @@ class MainActivity : ComponentActivity() {
                     requestedPageIndex = requestedPageIndex.intValue,
                     navigationRequestId = navigationRequestId.intValue,
                     settings = launcherSettings,
-                    isDashLocked = isDashLocked && lockScreenSecurityType.value != "none",
-                    lockScreenSecurityType = lockScreenSecurityType.value,
+                    isDashLocked = isDashLocked && lockScreenSecurityType.value != "none" && lockScreenSecurityType.value != "loading",
+                    lockScreenSecurityType = if (lockScreenSecurityType.value == "loading") "none" else lockScreenSecurityType.value,
                     onVerifyPin = { input ->
+                        if (lockScreenSecurityType.value == "loading") return@LumoLauncherApp false
                         val sanitized = LockScreenActivity.sanitizeInput(input)
                         if (sanitized.isEmpty() || lockScreenSecurityHash.value.isEmpty()) false
                         else LockScreenActivity.hashWithSalt(sanitized, lockScreenSecuritySalt.value) == lockScreenSecurityHash.value
@@ -172,6 +181,8 @@ class MainActivity : ComponentActivity() {
                     },
                     onDismissHeadsUpNotification = viewModel::dismissHeadsUpNotification,
                     onToggleFavorite = viewModel::toggleFavorite,
+                    onAddFavorite = viewModel::addFavorite,
+                    onReorderFavorites = viewModel::reorderFavorites,
                     onOpenAppInfo = { app ->
                         val result = viewModel.openAppInfo(app)
                         if (result.isFailure) {
@@ -208,8 +219,10 @@ class MainActivity : ComponentActivity() {
         viewModel.refreshApps() // no-op unless first load; use force=true for explicit refresh
         viewModel.refreshNotifications()
         loadSecurityState()
+        refreshWeather()
         lifecycleScope.launch {
             LumoGestureSidebarService.sync(this@MainActivity, repository.isOverlaySidebarEnabled())
+            syncScreenReceiver(repository.isLockScreenCompanionEnabled())
         }
     }
 
@@ -275,21 +288,31 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun registerScreenReceiver() {
-        val filter = IntentFilter().apply {
-            addAction(Intent.ACTION_SCREEN_OFF)
-            addAction(Intent.ACTION_USER_PRESENT)
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(screenReceiver, filter, RECEIVER_NOT_EXPORTED)
-        } else {
-            @Suppress("DEPRECATION")
-            registerReceiver(screenReceiver, filter)
+    /** Register the screen receiver only when the lock-screen companion is enabled. */
+    private fun syncScreenReceiver(enabled: Boolean) {
+        if (enabled && !screenReceiverRegistered) {
+            val receiver = LumoUnlockReceiver()
+            screenReceiver = receiver
+            val filter = IntentFilter().apply {
+                addAction(Intent.ACTION_SCREEN_OFF)
+                addAction(Intent.ACTION_USER_PRESENT)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                registerReceiver(receiver, filter, RECEIVER_NOT_EXPORTED)
+            } else {
+                @Suppress("DEPRECATION")
+                registerReceiver(receiver, filter)
+            }
+            screenReceiverRegistered = true
+        } else if (!enabled && screenReceiverRegistered) {
+            screenReceiver?.let { runCatching { unregisterReceiver(it) } }
+            screenReceiver = null
+            screenReceiverRegistered = false
         }
     }
 
     override fun onDestroy() {
-        runCatching { unregisterReceiver(screenReceiver) }
+        screenReceiver?.let { runCatching { unregisterReceiver(it) } }
         runCatching { unregisterReceiver(packageChangeReceiver) }
         torchCallback?.let { cb ->
             runCatching { getSystemService(CameraManager::class.java)?.unregisterTorchCallback(cb) }
@@ -328,6 +351,20 @@ class MainActivity : ComponentActivity() {
         }
         torchCallback = callback
         cameraManager.registerTorchCallback(callback, null)
+    }
+
+    private fun refreshWeather() {
+        lifecycleScope.launch {
+            OpenMeteoWeatherProvider.refresh(applicationContext)
+        }
+    }
+
+    private fun requestLocationIfNeeded() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            requestLocationPermission.launch(Manifest.permission.ACCESS_COARSE_LOCATION)
+        }
     }
 
     private fun requestActivityRecognitionIfNeeded() {

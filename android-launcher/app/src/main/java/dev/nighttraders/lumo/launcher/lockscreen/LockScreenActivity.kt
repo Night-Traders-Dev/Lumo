@@ -25,7 +25,7 @@ import java.security.SecureRandom
 
 class LockScreenActivity : ComponentActivity() {
     private val repository by lazy { LauncherRepository(applicationContext) }
-    private var securityType by mutableStateOf("none")
+    private var securityType by mutableStateOf("loading")
     private var securityHash by mutableStateOf("")
     private var securitySalt by mutableStateOf("")
 
@@ -33,7 +33,11 @@ class LockScreenActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setShowWhenLocked(true)
-        setTurnScreenOn(true)
+        // Only turn screen on if explicitly requested (e.g. from companion service full-screen intent).
+        // Do NOT turn screen on when launched from SCREEN_OFF receiver — that would wake the device.
+        if (intent?.getBooleanExtra(EXTRA_TURN_SCREEN_ON, false) == true) {
+            setTurnScreenOn(true)
+        }
         LumoLockScreenCompanionService.dismissWakeSurface(this)
         configureSystemBars()
         loadSecurity()
@@ -46,7 +50,7 @@ class LockScreenActivity : ComponentActivity() {
                 LumoLockScreenScreen(
                     status = status,
                     notifications = notifications,
-                    securityType = securityType,
+                    securityType = if (securityType == "loading") "none" else securityType,
                     onUnlock = ::attemptUnlock,
                     onVerifyPin = ::verifyPin,
                 )
@@ -75,6 +79,7 @@ class LockScreenActivity : ComponentActivity() {
     }
 
     private fun verifyPin(input: String): Boolean {
+        if (securityType == "loading") return false // Still loading — don't allow bypass
         if (securityHash.isEmpty()) return true
         val sanitized = sanitizeInput(input)
         if (sanitized.isEmpty()) return false
@@ -122,10 +127,14 @@ class LockScreenActivity : ComponentActivity() {
         const val MAX_PASSWORD_LENGTH = 32
         private const val MAX_INPUT_LENGTH = 32
         private const val SALT_BYTES = 32
+        private const val EXTRA_TURN_SCREEN_ON = "dev.nighttraders.lumo.launcher.TURN_SCREEN_ON"
 
         fun createIntent(context: Context): Intent =
             Intent(context, LockScreenActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+
+        fun createWakeIntent(context: Context): Intent =
+            createIntent(context).putExtra(EXTRA_TURN_SCREEN_ON, true)
 
         fun generateSalt(): String {
             val bytes = ByteArray(SALT_BYTES)

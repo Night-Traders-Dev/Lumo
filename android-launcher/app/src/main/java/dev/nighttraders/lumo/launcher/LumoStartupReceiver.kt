@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import dev.nighttraders.lumo.launcher.data.LauncherRepository
+import dev.nighttraders.lumo.launcher.lockscreen.LumoLockScreenCompanionService
 import dev.nighttraders.lumo.launcher.overlay.LumoGestureSidebarService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -23,6 +24,9 @@ class LumoStartupReceiver : BroadcastReceiver() {
                 val repository = LauncherRepository(appContext)
                 if (repository.isOverlaySidebarEnabled()) {
                     LumoGestureSidebarService.start(appContext)
+                }
+                if (repository.isLockScreenCompanionEnabled()) {
+                    LumoLockScreenCompanionService.start(appContext)
                 }
             } finally {
                 pendingResult.finish()
