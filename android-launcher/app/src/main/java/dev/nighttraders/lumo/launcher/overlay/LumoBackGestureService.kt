@@ -12,6 +12,9 @@ import android.view.accessibility.AccessibilityEvent
 /**
  * Accessibility service that adds a right-edge gesture handle.
  * Swiping from right edge to left performs a BACK action.
+ *
+ * The handle is automatically suppressed when Lumo's app drawer is open
+ * so that the user can swipe to dismiss the drawer without triggering back.
  */
 class LumoBackGestureService : AccessibilityService() {
     private var rightEdgeView: View? = null
@@ -19,6 +22,7 @@ class LumoBackGestureService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
+        instance = this
         windowManager = getSystemService(WindowManager::class.java)
         addRightEdgeHandle()
     }
@@ -30,6 +34,7 @@ class LumoBackGestureService : AccessibilityService() {
     override fun onDestroy() {
         removeView(rightEdgeView)
         rightEdgeView = null
+        if (instance === this) instance = null
         super.onDestroy()
     }
 
@@ -42,7 +47,7 @@ class LumoBackGestureService : AccessibilityService() {
         }
 
         val params = WindowManager.LayoutParams(
-            dp(20),
+            dp(handleWidthDp),
             WindowManager.LayoutParams.MATCH_PARENT,
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP_MR1) {
                 WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
@@ -62,6 +67,13 @@ class LumoBackGestureService : AccessibilityService() {
         rightEdgeView = handle
     }
 
+    /** Rebuild the edge handle with the current width. */
+    private fun rebuildHandle() {
+        removeView(rightEdgeView)
+        rightEdgeView = null
+        addRightEdgeHandle()
+    }
+
     private fun removeView(view: View?) {
         view ?: return
         runCatching { windowManager.removeView(view) }
@@ -72,15 +84,18 @@ class LumoBackGestureService : AccessibilityService() {
     private inner class RightEdgeTouchListener : View.OnTouchListener {
         private var startX = 0f
 
-        override fun onTouch(v: View, event: MotionEvent): Boolean =
-            when (event.actionMasked) {
+        override fun onTouch(v: View, event: MotionEvent): Boolean {
+            // When Lumo has the app drawer open, pass touches through
+            if (suppressBackGesture) return false
+
+            return when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     startX = event.rawX
                     true
                 }
                 MotionEvent.ACTION_UP -> {
                     val dx = startX - event.rawX
-                    if (dx > dp(40)) {
+                    if (dx > dp(thresholdDp)) {
                         performGlobalAction(GLOBAL_ACTION_BACK)
                     }
                     true
@@ -89,5 +104,29 @@ class LumoBackGestureService : AccessibilityService() {
                 MotionEvent.ACTION_MOVE -> true
                 else -> false
             }
+        }
+    }
+
+    companion object {
+        private var instance: LumoBackGestureService? = null
+
+        /**
+         * When true, the back gesture is suppressed (e.g. while the app drawer is visible).
+         * The launcher sets this flag from [LumoLauncherApp].
+         */
+        @Volatile
+        var suppressBackGesture: Boolean = false
+
+        /** Current handle width in dp, settable from settings. */
+        @Volatile
+        var handleWidthDp: Int = 20
+            set(value) {
+                field = value
+                instance?.rebuildHandle()
+            }
+
+        /** Swipe threshold in dp, settable from settings. */
+        @Volatile
+        var thresholdDp: Int = 40
     }
 }

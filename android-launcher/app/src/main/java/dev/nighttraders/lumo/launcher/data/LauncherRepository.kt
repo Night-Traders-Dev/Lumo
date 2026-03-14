@@ -157,6 +157,34 @@ class LauncherRepository(private val context: Context) {
         }
     }
 
+    // ── Appearance & gesture settings ──────────────────────────────────
+
+    fun observeLauncherSettings(): Flow<LumoLauncherSettings> =
+        context.launcherPreferences.data.map { prefs ->
+            LumoLauncherSettings(
+                appIconSizeDp = prefs[LauncherPreferences.appIconSizeDp] ?: 56,
+                appGridColumns = prefs[LauncherPreferences.appGridColumns] ?: 4,
+                dashRailWidthDp = prefs[LauncherPreferences.dashRailWidthDp] ?: 68,
+                backGestureEnabled = prefs[LauncherPreferences.backGestureEnabled] ?: true,
+                bottomEdgeGestureEnabled = prefs[LauncherPreferences.bottomEdgeGestureEnabled] ?: true,
+                leftEdgeGestureEnabled = prefs[LauncherPreferences.leftEdgeGestureEnabled] ?: true,
+                multitaskGestureEnabled = prefs[LauncherPreferences.multitaskGestureEnabled] ?: true,
+                indicatorSwipeEnabled = prefs[LauncherPreferences.indicatorSwipeEnabled] ?: true,
+                backGestureWidthDp = prefs[LauncherPreferences.backGestureWidthDp] ?: 20,
+                backGestureThresholdDp = prefs[LauncherPreferences.backGestureThresholdDp] ?: 40,
+                bottomEdgeHeightDp = prefs[LauncherPreferences.bottomEdgeHeightDp] ?: 70,
+                bottomEdgeThresholdDp = prefs[LauncherPreferences.bottomEdgeThresholdDp] ?: 42,
+                leftEdgeWidthDp = prefs[LauncherPreferences.leftEdgeWidthDp] ?: 20,
+                leftEdgeThresholdDp = prefs[LauncherPreferences.leftEdgeThresholdDp] ?: 24,
+                horizontalSwipeThresholdDp = prefs[LauncherPreferences.horizontalSwipeThresholdDp] ?: 80,
+                multitaskSwipeThresholdDp = prefs[LauncherPreferences.multitaskSwipeThresholdDp] ?: 80,
+            )
+        }
+
+    suspend fun <T> updateSetting(key: androidx.datastore.preferences.core.Preferences.Key<T>, value: T) {
+        context.launcherPreferences.edit { it[key] = value }
+    }
+
     fun openAppInfo(app: LaunchableApp): Result<Unit> = runCatching {
         val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
             .setData(Uri.parse("package:${app.packageName}"))

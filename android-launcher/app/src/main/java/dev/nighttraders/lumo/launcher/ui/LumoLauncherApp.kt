@@ -119,6 +119,7 @@ fun LumoLauncherApp(
     systemStatus: SystemStatusSnapshot,
     isDefaultHome: Boolean,
     requestedPageIndex: Int,
+    settings: dev.nighttraders.lumo.launcher.data.LumoLauncherSettings = dev.nighttraders.lumo.launcher.data.LumoLauncherSettings(),
     isDashLocked: Boolean = false,
     lockScreenSecurityType: String = "none",
     onVerifyPin: (String) -> Boolean = { false },
@@ -154,6 +155,13 @@ fun LumoLauncherApp(
     var appsOverlayFromBottom by rememberSaveable { mutableStateOf(false) }
     var appsOverlayFromSide by rememberSaveable { mutableStateOf(false) }
     var showMultitask by rememberSaveable { mutableStateOf(false) }
+
+    val appsVisible = appsOverlayFromBottom || appsOverlayFromSide
+
+    // Suppress the back gesture service when the app drawer is open so swipe-out works
+    LaunchedEffect(appsVisible) {
+        dev.nighttraders.lumo.launcher.overlay.LumoBackGestureService.suppressBackGesture = appsVisible
+    }
 
     // Show swipe hint once after first load
     LaunchedEffect(uiState.isLoading, isDashLocked) {
@@ -251,7 +259,7 @@ fun LumoLauncherApp(
                 onToggleIndicators = { indicatorsExpanded = !indicatorsExpanded },
                 onExpandIndicators = { indicatorsExpanded = true },
                 onCollapseIndicators = { indicatorsExpanded = false },
-                onOpenApps = { openApps() },
+                onOpenApps = { if (appsVisible) goHome() else openApps() },
             )
 
             if (!isDefaultHome) {
@@ -274,7 +282,8 @@ fun LumoLauncherApp(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .pointerInput(appsOverlayFromSide) {
+                        .pointerInput(appsOverlayFromSide, settings.horizontalSwipeThresholdDp) {
+                            val thresholdPx = settings.horizontalSwipeThresholdDp * density
                             var totalDrag = 0f
                             detectHorizontalDragGestures(
                                 onHorizontalDrag = { _, dragAmount ->
@@ -283,8 +292,8 @@ fun LumoLauncherApp(
                                 onDragCancel = { totalDrag = 0f },
                                 onDragEnd = {
                                     when {
-                                        !appsOverlayFromSide && totalDrag < -80f -> openApps(fromBottom = false)
-                                        appsOverlayFromSide && totalDrag > 80f -> goHome()
+                                        !appsOverlayFromSide && totalDrag < -thresholdPx -> openApps(fromBottom = false)
+                                        appsOverlayFromSide && totalDrag > thresholdPx -> goHome()
                                     }
                                     totalDrag = 0f
                                 },
@@ -305,7 +314,7 @@ fun LumoLauncherApp(
                     )
                 }
 
-                val appsVisible = appsOverlayFromBottom || appsOverlayFromSide
+                // appsVisible is computed at the top of the composable
 
                 // Apps overlay sliding from bottom when triggered by swipe-up
                 androidx.compose.animation.AnimatedVisibility(
@@ -331,6 +340,8 @@ fun LumoLauncherApp(
                         favoriteKeys = uiState.favoriteKeys,
                         isLoading = uiState.isLoading,
                         searchQuery = searchQuery,
+                        gridColumns = settings.appGridColumns,
+                        iconSizeDp = settings.appIconSizeDp,
                         onSearchQueryChange = { searchQuery = it },
                         onLaunchApp = onLaunchApp,
                         onLongPressApp = { appActionTarget = it },
@@ -361,55 +372,64 @@ fun LumoLauncherApp(
                         favoriteKeys = uiState.favoriteKeys,
                         isLoading = uiState.isLoading,
                         searchQuery = searchQuery,
+                        gridColumns = settings.appGridColumns,
+                        iconSizeDp = settings.appIconSizeDp,
                         onSearchQueryChange = { searchQuery = it },
                         onLaunchApp = onLaunchApp,
                         onLongPressApp = { appActionTarget = it },
                     )
                 }
 
-                BottomEdgeGestureHandle(
-                    modifier = Modifier.align(Alignment.BottomCenter),
-                    appsVisible = appsVisible,
-                    onGoHome = { goHome() },
-                    onOpenApps = { openApps(fromBottom = true) },
-                    onDismissApps = { goHome() },
-                )
+                if (settings.bottomEdgeGestureEnabled) {
+                    BottomEdgeGestureHandle(
+                        modifier = Modifier.align(Alignment.BottomCenter),
+                        heightDp = settings.bottomEdgeHeightDp,
+                        thresholdDp = settings.bottomEdgeThresholdDp,
+                        appsVisible = appsVisible,
+                        onGoHome = { goHome() },
+                        onOpenApps = { openApps(fromBottom = true) },
+                        onDismissApps = { goHome() },
+                    )
+                }
 
                 if (!appsVisible && !indicatorsExpanded) {
-                    LeftEdgeRevealHandle(
-                        modifier = Modifier.align(Alignment.CenterStart),
-                        railVisible = railVisible,
-                        onRevealRail = { railVisible = true },
-                    )
+                    if (settings.leftEdgeGestureEnabled) {
+                        LeftEdgeRevealHandle(
+                            modifier = Modifier.align(Alignment.CenterStart),
+                            widthDp = settings.leftEdgeWidthDp,
+                            thresholdDp = settings.leftEdgeThresholdDp,
+                            railVisible = railVisible,
+                            onRevealRail = { railVisible = true },
+                        )
+                    }
 
-                    // Multitask gesture: left-to-right swipe on center area (not edge)
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.CenterStart)
-                            .padding(start = 40.dp) // offset from edge to not conflict with rail gesture
-                            .fillMaxHeight()
-                            .fillMaxWidth(0.4f)
-                            .pointerInput(Unit) {
-                                var startX = 0f
-                                var totalDrag = 0f
-                                detectHorizontalDragGestures(
-                                    onDragStart = { offset ->
-                                        startX = offset.x
-                                        totalDrag = 0f
-                                    },
-                                    onHorizontalDrag = { _, dragAmount ->
-                                        if (dragAmount > 0f) totalDrag += dragAmount
-                                    },
-                                    onDragCancel = { totalDrag = 0f },
-                                    onDragEnd = {
-                                        if (totalDrag > 80f) {
-                                            showMultitask = true
-                                        }
-                                        totalDrag = 0f
-                                    },
-                                )
-                            },
-                    )
+                    if (settings.multitaskGestureEnabled) {
+                        // Multitask gesture: left-to-right swipe on center area (not edge)
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.CenterStart)
+                                .padding(start = 40.dp)
+                                .fillMaxHeight()
+                                .fillMaxWidth(0.4f)
+                                .pointerInput(settings.multitaskSwipeThresholdDp) {
+                                    val thresholdPx = settings.multitaskSwipeThresholdDp * density
+                                    var totalDrag = 0f
+                                    detectHorizontalDragGestures(
+                                        onDragStart = { totalDrag = 0f },
+                                        onHorizontalDrag = { _, dragAmount ->
+                                            if (dragAmount > 0f) totalDrag += dragAmount
+                                        },
+                                        onDragCancel = { totalDrag = 0f },
+                                        onDragEnd = {
+                                            if (totalDrag > thresholdPx) {
+                                                showMultitask = true
+                                            }
+                                            totalDrag = 0f
+                                        },
+                                    )
+                                },
+                        )
+                    }
                 }
 
                 if (railVisible) {
@@ -447,6 +467,7 @@ fun LumoLauncherApp(
                 ) {
                     UbuntuTouchLauncherRail(
                         appsVisible = appsVisible,
+                        railWidthDp = settings.dashRailWidthDp,
                         apps = launcherApps,
                         onGoHome = { goHome() },
                         onOpenApps = { openApps() },
@@ -847,6 +868,8 @@ private fun MultitaskAppCard(
 @Composable
 private fun LeftEdgeRevealHandle(
     modifier: Modifier = Modifier,
+    widthDp: Int = 20,
+    thresholdDp: Int = 24,
     railVisible: Boolean,
     onRevealRail: () -> Unit,
 ) {
@@ -854,8 +877,9 @@ private fun LeftEdgeRevealHandle(
     Box(
         modifier = modifier
             .fillMaxHeight()
-            .width(20.dp)
-            .pointerInput(railVisible) {
+            .width(widthDp.dp)
+            .pointerInput(railVisible, thresholdDp) {
+                val thresholdPx = thresholdDp * density
                 var totalDrag = 0f
                 detectHorizontalDragGestures(
                     onHorizontalDrag = { _, dragAmount ->
@@ -865,7 +889,7 @@ private fun LeftEdgeRevealHandle(
                     },
                     onDragCancel = { totalDrag = 0f },
                     onDragEnd = {
-                        if (totalDrag > 24f) {
+                        if (totalDrag > thresholdPx) {
                             onRevealRail()
                         }
                         totalDrag = 0f
@@ -883,6 +907,8 @@ private fun LeftEdgeRevealHandle(
 @Composable
 private fun BottomEdgeGestureHandle(
     modifier: Modifier = Modifier,
+    heightDp: Int = 70,
+    thresholdDp: Int = 42,
     appsVisible: Boolean,
     onGoHome: () -> Unit,
     onOpenApps: () -> Unit,
@@ -891,8 +917,9 @@ private fun BottomEdgeGestureHandle(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(70.dp)
-            .pointerInput(appsVisible) {
+            .height(heightDp.dp)
+            .pointerInput(appsVisible, thresholdDp) {
+                val thresholdPx = thresholdDp * density
                 var totalDrag = 0f
                 detectVerticalDragGestures(
                     onVerticalDrag = { _, dragAmount ->
@@ -901,8 +928,8 @@ private fun BottomEdgeGestureHandle(
                     onDragCancel = { totalDrag = 0f },
                     onDragEnd = {
                         when {
-                            appsVisible && totalDrag > 42f -> onDismissApps()
-                            !appsVisible && totalDrag < -42f -> onOpenApps()
+                            appsVisible && totalDrag > thresholdPx -> onDismissApps()
+                            !appsVisible && totalDrag < -thresholdPx -> onOpenApps()
                         }
                         totalDrag = 0f
                     },
@@ -1361,6 +1388,7 @@ private fun DefaultHomePill(
 @Composable
 private fun UbuntuTouchLauncherRail(
     appsVisible: Boolean,
+    railWidthDp: Int = 68,
     apps: List<LaunchableApp>,
     onGoHome: () -> Unit,
     onOpenApps: () -> Unit,
@@ -1372,7 +1400,7 @@ private fun UbuntuTouchLauncherRail(
 
     Surface(
         modifier = Modifier
-            .width(68.dp)
+            .width(railWidthDp.dp)
             .fillMaxHeight(),
         color = Color(0xCC0E0A10),
         shape = RoundedCornerShape(0.dp),
@@ -1445,7 +1473,7 @@ private fun UbuntuTouchLauncherRail(
                             Color(0x33FFFFFF)
                         },
                     )
-                    .clickable(onClick = onOpenApps),
+                    .clickable(onClick = if (appsVisible) onGoHome else onOpenApps),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
@@ -2108,6 +2136,8 @@ private fun AppsScopePage(
     favoriteKeys: Set<String>,
     isLoading: Boolean,
     searchQuery: String,
+    gridColumns: Int = 4,
+    iconSizeDp: Int = 52,
     onSearchQueryChange: (String) -> Unit,
     onLaunchApp: (LaunchableApp) -> Unit,
     onLongPressApp: (LaunchableApp) -> Unit,
@@ -2158,7 +2188,7 @@ private fun AppsScopePage(
         } else {
             LazyVerticalGrid(
                 modifier = Modifier.fillMaxSize(),
-                columns = GridCells.Fixed(4),
+                columns = GridCells.Fixed(gridColumns),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(18.dp),
             ) {
@@ -2170,6 +2200,7 @@ private fun AppsScopePage(
                     AppGridItem(
                         app = app,
                         isFavorite = favoriteKeys.contains(app.componentKey),
+                        iconSizeDp = iconSizeDp,
                         onLaunchApp = onLaunchApp,
                         onLongPressApp = onLongPressApp,
                     )
@@ -2184,6 +2215,7 @@ private fun AppsScopePage(
 private fun AppGridItem(
     app: LaunchableApp,
     isFavorite: Boolean,
+    iconSizeDp: Int = 52,
     onLaunchApp: (LaunchableApp) -> Unit,
     onLongPressApp: (LaunchableApp) -> Unit,
 ) {
@@ -2199,11 +2231,11 @@ private fun AppGridItem(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Box(contentAlignment = Alignment.BottomCenter) {
-            AppIcon(app = app, size = 52.dp)
+            AppIcon(app = app, size = iconSizeDp.dp)
             if (isFavorite) {
                 Box(
                     modifier = Modifier
-                        .padding(top = 52.dp)
+                        .padding(top = iconSizeDp.dp)
                         .size(width = 18.dp, height = 3.dp)
                         .clip(RoundedCornerShape(4.dp))
                         .background(MaterialTheme.colorScheme.primary),

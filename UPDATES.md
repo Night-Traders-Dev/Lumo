@@ -2,93 +2,140 @@
 
 This file tracks the major Android-port milestones and recent fixes in plain language.
 
-## Current Snapshot
+## Version History
 
-- The repo now includes a native Android launcher in `android-launcher/`
-- The launcher installs and runs on modern Android devices
-- Lumo can act as a Home app, not just a standalone demo
-- The original GTK shell still exists under `src/` as a historical reference
+### v0.5.0 — 2026-03-13: Gesture engine, full settings, multitask redesign
 
-## Major Android Work Completed
+This session overhauled the gesture system, added comprehensive settings, and fixed several UI issues.
 
-### Keyboard: Ubuntu Touch Maliit styling and swipe typing
+#### Gesture engine and back gesture service
 
-- Restyled keyboard to match Ubuntu Touch's Maliit keyboard: charcoal grey background (`#2B2B2B`), flat keys with subtle 6dp rounding (`#3C3C3C`), darker special keys (`#494949`)
-- Added character popover (key preview popup) that shows a magnified letter above the pressed key, matching Ubuntu Touch and iOS behavior
-- Added swipe typing (gesture typing) with haptic feedback per key transition during swipe
-- Key preview follows finger during swipe mode, showing the current key being touched
-- Swipe word resolution uses `KeyboardWordEngine` with Damerau-Levenshtein distance scoring
-- Space bar cursor control: press-and-hold spacebar then drag left/right to move the text cursor
+- Added `LumoBackGestureService` — an AccessibilityService that provides system-wide back gesture interception on the right screen edge
+- Back gesture is automatically suppressed when the app drawer is open, so swiping out of the app drawer always works
+- Runtime-configurable handle width and swipe threshold via static companion properties
 
-### Notification drawer: Ubuntu Touch indicator panel redesign
+#### Full settings control
 
-- Redesigned indicators panel from a narrow right-side dropdown to a full-width Ubuntu Touch-style panel
-- Status indicators shown as rounded pills (Wi-Fi, Battery, Notifications) across the top
-- Date header with thin separator lines between sections
-- Notifications use swipe-to-dismiss cards with long-press for action sheet
-- "Clear all" text link in orange replaces the old Material button
-- Bottom action row with icon+label buttons: Settings, Lock, Set Home
+- Added `LumoLauncherSettings` data class with 16 configurable properties
+- New settings sections in Lumo System: Appearance, Gesture Toggles, Gesture Sensitivity
+- Appearance: app icon size, app grid columns, dash rail width (all via sliders)
+- Gesture toggles: back gesture, bottom edge, left edge, multitask, indicator swipe (on/off switches)
+- Gesture sensitivity: 8 sliders for handle widths and swipe thresholds for every gesture zone
+- Settings propagate reactively: DataStore → Repository → ViewModel → Activity → Composables
 
-### Lock screen: InfoGraphic improvements
+#### App drawer overhaul
 
-- Added Ubuntu Touch-style metric messages inside the InfoGraphic circle (notification count, messaging count, day of year, days remaining, month progress)
-- Double-tap the circle to cycle through metric messages with fade animation
-- Past days now show larger dots (3.5dp) with orange tint when notifications exist, matching Ubuntu Touch's activity visualization
-- Accent arc opacity increased for better visibility
+- Replaced HorizontalPager with direction-aware AnimatedVisibility overlays (bottom slide-up and side slide-in)
+- Fixed artifact where home screen content bled through the app drawer (opaque gradient background)
+- App drawer button in the dock now toggles: opens when closed, closes when already open
+- Horizontal swipe on home opens app drawer; swipe back from app drawer returns home
 
-### Notification deep linking
+#### Notification dismissal fix
 
-- Clicking a notification now fires `contentIntent` first, which deep links to the specific content (e.g., tapping an SMS notification opens that conversation thread, not just the Messages app)
-- Fallback to launching the app's main activity only when no `contentIntent` is available
-- Notification is automatically dismissed from the system after opening
-- Removed redundant dismiss calls in the ViewModel chain
+- Added 5-second cooldown suppression in `LauncherNotificationCenter` to prevent dismissed notifications from reappearing when the source app re-posts them
+- Uses `ConcurrentHashMap` with timestamp-based expiry
 
-### Dock: Ubuntu Touch BFB and squircle design
+#### Multitask view redesign
 
-- Both the Compose launcher rail and the overlay gesture sidebar now match Ubuntu Touch's dock
-- Ubuntu BFB (Big Friendly Button) at top with Circle of Friends vector icon
-- Squircle (superellipse) shaped app icons with `|x|^n + |y|^n = 1` (n=4)
-- Dot-grid apps button at bottom
-- Thin separator lines between dock sections
-- 68dp width, dark semi-transparent background
+- Redesigned to match Ubuntu Touch card style: vertical `LazyColumn` with window preview cards
+- Each card has a title bar (app icon + name + close button) and a preview area
+- Swipe-to-dismiss with `graphicsLayer` translation and alpha fade, 200px threshold
+- Local `dismissedKeys` state prevents dismissed cards from flickering back
 
-### Launcher foundation
+#### Lock screen companion and security
 
-- Added a proper `HOME` + `DEFAULT` launcher activity
-- Added Home-role request flow
-- Replaced Linux `.desktop` discovery with Android launcher activity discovery
-- Added persisted favorites using DataStore
-- Added Lomiri-inspired home surface and app scope
+- Added `LumoLockScreenCompanionService` for wake-on-screen-off behavior
+- Added PIN and password security with SHA-256 hashing and random salt
+- Dash lock: quick-settings dashboard can be locked behind PIN/password
+- `LumoUnlockReceiver` listens for screen-off and user-present broadcasts
 
-### Gestures and shell feel
+#### Screenshots and documentation
 
-- Added hidden edge-reveal launcher rail on Home
-- Added bottom-edge gesture between Home and Apps
-- Added indicators sheet and top-swipe behavior
-- Added optional overlay-based gesture sidebar so Lumo can be reached from other apps
+- Added `screenshots/` directory with 10 launcher screenshots
+- Added `.gitignore` to exclude build artifacts and IDE files
 
-### Notifications
+### v0.4.0 — 2026-03-13: Android launcher full feature build
 
-- Added a real notification listener service
-- Added recent notifications on Home
-- Added heads-up notifications
-- Added swipe-to-dismiss notification cards
-- Added long-press notification actions for open, open app, snooze, and dismiss
-- Fixed a Compose state issue where the dismiss background could linger after swiping away a notification
+The initial Android launcher build with all core Ubuntu Touch features.
 
-### Settings and system surfaces
+#### Launcher core
 
-- Added `Lumo System` settings activity
-- Added links for default Home role, notification access, overlay permission, keyboard settings, and wallpaper/display/Wi-Fi settings
-- Added a Lumo lock screen surface that works with Android's real keyguard dismissal flow
+- Home-role launcher activity with `HOME` + `DEFAULT` intent filters
+- App discovery via Android launcher activities
+- Persisted favorites using DataStore
+- Recent apps tracking
+- Long-press app actions: favorite, app info, uninstall
 
-### Keyboard
+#### Ubuntu Touch UI
 
-- Added a real `InputMethodService` for Lumo Keyboard
-- Added haptic feedback on keypress
-- Added primary and alternate symbol layouts
-- Added suggestion strip support using Android completions and spell-check APIs
-- Fixed Android 16 / targetSdk 35 compatibility by removing blocked reads from `Settings.Secure`
+- Home surface with time, date, and notification preview cards
+- Ubuntu Touch-style dock with BFB (Big Friendly Button) and squircle app icons
+- Edge-reveal launcher rail on Home
+- Full-width indicator panel with status pills, quick actions, and "Clear all"
+
+#### Notification system
+
+- Real `NotificationListenerService` with notification center
+- Deep linking: tapping a notification opens specific content (SMS thread, not just app)
+- Heads-up notification alerts with auto-dismiss
+- Swipe-to-dismiss and long-press action sheets (open, open app, snooze, dismiss)
+
+#### Keyboard IME
+
+- Full `InputMethodService` styled after Ubuntu Touch Maliit
+- Charcoal flat keys with subtle rounding, character popover preview
+- Swipe typing with `KeyboardWordEngine` (Damerau-Levenshtein scoring)
+- Haptic feedback per key and during swipe transitions
+- Space bar cursor control (hold + drag)
+- Primary and alternate symbol layouts
+- Suggestion strip with autocomplete and spell check
+- Swipe trail visualization via `SwipeTrailView`
+
+#### Lock screen
+
+- Ubuntu Touch InfoGraphic ring with day-of-month dots
+- Metric messages (notification count, day of year, month progress)
+- Double-tap to cycle metrics with fade animation
+- Past-day dots with orange tint for notification activity
+- Swipe up to unlock into Android's real keyguard flow
+
+#### Overlay services
+
+- Gesture sidebar overlay for reaching Lumo from other apps
+- Ubuntu-styled overlay dock matching the in-app rail design
+
+#### Settings
+
+- Lumo System settings activity
+- Sections for default home, notifications, overlay permission, keyboard, lock screen
+- Wi-Fi, display, wallpaper, and accessibility shortcuts
+
+### v0.3.0 — 2025-09-03: Terminal and utilities
+
+- Added embedded terminal component
+- Added apps/util integration
+- Updates to shell and app drawer
+
+### v0.2.0 — 2025-08-29: GTK prototype expansion
+
+- Added settings app to GTK shell
+- Added app drawer with search
+- Added terminal emulator
+- Added Facebook Messenger integration
+- Updated favorites and panel behavior
+- Added LumoIDE prototype
+
+### v0.1.0 — 2025-08-27: Keyboard and text engine
+
+- Extensive keyboard development (20+ commits)
+- Text engine (TE) development and refinements
+- Initial keyboard layout and input handling
+
+### v0.0.1 — 2025-08-19: Initial commit
+
+- Project scaffolding
+- GTK/Python shell prototype with panel, favorites rail, and app drawer
+- Text engine foundation (Lumo TE)
 
 ## Known Limits
 
@@ -103,8 +150,6 @@ This file tracks the major Android-port milestones and recent fixes in plain lan
 - Long-press alternate characters and accent popups for the keyboard
 - Keyboard emoji input panel and language switching
 - Quick toggles grid (Wi-Fi, Bluetooth, Airplane mode, etc.) in indicators panel
-- Right-edge task switcher gesture
-- Passcode/passphrase entry on lock screen
 - Media controls (MPRIS-style) in indicators panel
 - Widget hosting
 - Wallpaper support

@@ -19,7 +19,9 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
+import dev.nighttraders.lumo.launcher.data.LauncherPreferences
 import dev.nighttraders.lumo.launcher.data.LauncherRepository
+import dev.nighttraders.lumo.launcher.data.LumoLauncherSettings
 import dev.nighttraders.lumo.launcher.lockscreen.LumoLockScreenCompanionService
 import dev.nighttraders.lumo.launcher.overlay.LumoGestureSidebarService
 import dev.nighttraders.lumo.launcher.notifications.hasNotificationListenerAccess
@@ -46,6 +48,7 @@ class SettingsActivity : ComponentActivity() {
     private val supportsLockScreenCompanion = mutableStateOf(LumoLockScreenCompanionService.isWakeCompanionSupported())
     private val isLockScreenCompanionEnabled = mutableStateOf(false)
     private val lockScreenSecurityType = mutableStateOf("none")
+    private val launcherSettings = mutableStateOf(LumoLauncherSettings())
     private var lockScreenSecurityHash = ""
     private var lockScreenSecuritySalt = ""
 
@@ -54,6 +57,7 @@ class SettingsActivity : ComponentActivity() {
         enableEdgeToEdge()
         configureSystemBars()
         refreshStatus()
+        loadLauncherSettings()
 
         setContent {
             LumoLauncherTheme {
@@ -67,6 +71,7 @@ class SettingsActivity : ComponentActivity() {
                     supportsLockScreenCompanion = supportsLockScreenCompanion.value,
                     isLockScreenCompanionEnabled = isLockScreenCompanionEnabled.value,
                     lockScreenSecurityType = lockScreenSecurityType.value,
+                    settings = launcherSettings.value,
                     onRequestDefaultHome = ::requestDefaultHomeRole,
                     onRequestNotificationAccess = ::requestNotificationAccess,
                     onRequestOverlayPermission = ::openOverlayPermissionSettings,
@@ -85,6 +90,11 @@ class SettingsActivity : ComponentActivity() {
                     onOpenWifiSettings = { startActivity(Intent(Settings.ACTION_WIFI_SETTINGS)) },
                     onOpenDisplaySettings = { startActivity(Intent(Settings.ACTION_DISPLAY_SETTINGS)) },
                     onOpenWallpaperSettings = { startActivity(Intent(Intent.ACTION_SET_WALLPAPER)) },
+                    onOpenAccessibilitySettings = {
+                        startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                    },
+                    onUpdateIntSetting = { key, value -> updateIntSetting(key, value) },
+                    onUpdateBoolSetting = { key, value -> updateBoolSetting(key, value) },
                     onRefresh = ::refreshStatus,
                 )
             }
@@ -118,6 +128,30 @@ class SettingsActivity : ComponentActivity() {
             lockScreenSecurityType.value = repository.getLockScreenSecurityType()
             lockScreenSecurityHash = repository.getLockScreenSecurityHash()
             lockScreenSecuritySalt = repository.getLockScreenSecuritySalt()
+        }
+    }
+
+    private fun updateIntSetting(key: String, value: Int) {
+        val prefKey = androidx.datastore.preferences.core.intPreferencesKey(key)
+        lifecycleScope.launch {
+            repository.updateSetting(prefKey, value)
+            loadLauncherSettings()
+        }
+    }
+
+    private fun updateBoolSetting(key: String, value: Boolean) {
+        val prefKey = androidx.datastore.preferences.core.booleanPreferencesKey(key)
+        lifecycleScope.launch {
+            repository.updateSetting(prefKey, value)
+            loadLauncherSettings()
+        }
+    }
+
+    private fun loadLauncherSettings() {
+        lifecycleScope.launch {
+            repository.observeLauncherSettings().collect { settings ->
+                launcherSettings.value = settings
+            }
         }
     }
 

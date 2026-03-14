@@ -8,12 +8,19 @@ This directory contains the native Android launcher port of Lumo. It keeps the L
 - Request flow for Android's Home role
 - App discovery via launcher activities, not Linux `.desktop` files
 - Ubuntu Touch-style home surface with time, date, and notification cards
-- Searchable app library with 4-column grid and long-press favorites
+- Direction-aware app drawer with bottom swipe-up and side slide-in overlays
+- Searchable app library with configurable grid columns and icon size
 - Ubuntu Touch-style dock with BFB button, squircle app icons, and apps grid (both in-app rail and overlay sidebar)
 - Full-width Ubuntu Touch indicator panel with status pills, swipe-to-dismiss notifications, and quick actions
 - Notification deep linking (opens specific SMS thread, not just the app)
+- Notification dismissal cooldown to suppress re-posting flicker
+- Ubuntu Touch-style multitask view with swipe-to-dismiss app cards
 - Lock screen with InfoGraphic ring (day dots, metric messages, double-tap cycling)
-- Keyboard IME styled after Ubuntu Touch Maliit (charcoal flat keys, character popover, swipe typing)
+- Lock screen security with PIN and password (SHA-256 hashed with salt)
+- Lock screen companion service for wake-on-screen-off behavior
+- Keyboard IME styled after Ubuntu Touch Maliit (charcoal flat keys, character popover, swipe typing, swipe trail)
+- AccessibilityService-based back gesture with automatic suppression during app drawer
+- Full settings control: appearance (icon size, grid columns, rail width), gesture toggles (5 gestures), gesture sensitivity (8 threshold/width sliders)
 - Live header with time, battery, network, and notification count
 
 ## Requirements
@@ -41,18 +48,24 @@ Then install the APK on a device or emulator and set Lumo Launcher as the defaul
 
 - `app/src/main/java/dev/nighttraders/lumo/launcher/MainActivity.kt`
   Home activity and Home-role request flow
+- `app/src/main/java/dev/nighttraders/lumo/launcher/SettingsActivity.kt`
+  Lumo System settings activity
+- `app/src/main/java/dev/nighttraders/lumo/launcher/LockScreenActivity.kt`
+  Lock screen with PIN/password security
 - `app/src/main/java/dev/nighttraders/lumo/launcher/data/`
-  Launcher discovery, favorites persistence, and app launching
+  Launcher discovery, favorites persistence, settings (preferences, repository, settings data class)
 - `app/src/main/java/dev/nighttraders/lumo/launcher/ui/`
-  Compose UI: launcher app, lock screen, system status, view model
+  Compose UI: launcher app, settings screen, lock screen, system status, view model
 - `app/src/main/java/dev/nighttraders/lumo/launcher/ui/theme/`
   Color, typography, and Material theme setup
 - `app/src/main/java/dev/nighttraders/lumo/launcher/input/`
-  Keyboard IME service and word engine (swipe typing, suggestions, spell check)
+  Keyboard IME service, word engine (swipe typing, suggestions, spell check), swipe trail view
 - `app/src/main/java/dev/nighttraders/lumo/launcher/notifications/`
-  Notification listener service, notification center, and deep linking
+  Notification listener service, notification center with dismissal cooldown, and deep linking
 - `app/src/main/java/dev/nighttraders/lumo/launcher/overlay/`
-  Gesture sidebar overlay service (system-wide dock)
+  Gesture sidebar overlay service (system-wide dock), back gesture accessibility service
+- `app/src/main/java/dev/nighttraders/lumo/launcher/lockscreen/`
+  Lock state management and lock screen companion service
 
 ## Intentional Omissions
 

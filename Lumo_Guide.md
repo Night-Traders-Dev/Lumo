@@ -26,7 +26,7 @@ android-launcher/app/build/outputs/apk/release/app-release.apk
 ## 2. Install on a Device
 
 ```bash
-adb install -r /home/kraken/Devel/Lumo/android-launcher/app/build/outputs/apk/release/app-release.apk
+adb install -r android-launcher/app/build/outputs/apk/release/app-release.apk
 ```
 
 If the package installer UI crashes on-device, `adb install -r` is the preferred path.
@@ -59,6 +59,7 @@ What you get after enabling it:
 - Long-press actions for open, open app, snooze, and dismiss
 - Tap a notification to open the specific content (e.g., tapping an SMS opens that conversation thread, not just the Messages app)
 - "Clear all" button to dismiss all notifications at once
+- Dismissed notifications are suppressed for 5 seconds to prevent re-posting flicker
 
 ## 5. Enable the Gesture Sidebar
 
@@ -84,7 +85,23 @@ Important note:
 
 - This is an overlay-based approximation of Ubuntu Touch behavior, not full system-shell ownership
 
-## 6. Enable the Keyboard
+## 6. Enable the Back Gesture Service
+
+The back gesture service uses Android's AccessibilityService to provide a right-edge back swipe.
+
+From `Lumo System`:
+
+1. Open `Accessibility Settings`
+2. Find and enable `Lumo Back Gesture`
+3. Grant the accessibility permission
+
+Behavior:
+
+- Right-edge swipe triggers system back action
+- Automatically suppressed when the app drawer is open (so you can swipe the drawer closed)
+- Handle width and swipe threshold are configurable in Settings → Gesture Sensitivity
+
+## 7. Enable the Keyboard
 
 Lumo Keyboard is a real Android IME.
 
@@ -101,6 +118,7 @@ Current keyboard features:
 - Ubuntu Touch Maliit-inspired styling (charcoal flat keys with subtle rounding)
 - Character popover preview on key press
 - Swipe typing (gesture typing) across letter keys with word suggestions
+- Swipe trail visualization during gesture typing
 - Haptic key feedback (including per-key haptic during swipe)
 - Shift and auto-capitalization
 - Primary symbol page (`?123`) and alternate symbol page (`#+=`)
@@ -113,9 +131,9 @@ Important note:
 - Lumo Keyboard can use Android's public suggestion pipeline
 - It cannot directly embed Google's private Gboard autocomplete engine
 
-## 7. Use the Lock Screen Surface
+## 8. Use the Lock Screen Surface
 
-Lumo includes a themed lock-screen surface.
+Lumo includes a themed lock-screen surface with optional security.
 
 From `Lumo System`:
 
@@ -131,22 +149,67 @@ Behavior:
 - Up to 3 notification cards shown below the ring
 - Swipe up to dismiss into Android's real unlock flow
 
+Lock screen security:
+
+- Set a PIN or password from `Lumo System` → Lock Screen section
+- Security is hashed with SHA-256 + random salt (never stored in plaintext)
+- When security is set, the dash/quick-settings panel requires authentication to access
+- Lock screen companion service can wake the lock screen when the screen turns off
+
 Important note:
 
 - This is a themed lock surface layered over Android's keyguard flow
 - It is not a full replacement for the system lock screen
 
-## 8. Main Gestures
+## 9. Customize the Launcher
+
+All launcher behavior can be tuned from `Lumo System`.
+
+### Appearance
+
+- **App icon size**: Adjust the size of app icons in the app drawer (default: 56dp)
+- **App grid columns**: Number of columns in the app drawer grid (default: 4)
+- **Dash rail width**: Width of the Ubuntu Touch dock/rail (default: 68dp)
+
+### Gesture Toggles
+
+Each gesture can be individually enabled or disabled:
+
+- **Back gesture**: Right-edge back swipe (requires accessibility service)
+- **Bottom edge gesture**: Swipe up from bottom to open app drawer
+- **Left edge gesture**: Swipe from left edge to reveal dock rail
+- **Multitask gesture**: Access the multitask view
+- **Indicator swipe**: Swipe down from top to open indicator panel
+
+### Gesture Sensitivity
+
+Fine-tune trigger zones and thresholds for each gesture:
+
+- **Back gesture width**: How far from the right edge the back gesture activates (default: 20dp)
+- **Back gesture threshold**: Minimum swipe distance to trigger back (default: 40dp)
+- **Bottom edge height**: Height of the bottom-edge trigger zone (default: 70dp)
+- **Bottom edge threshold**: Minimum swipe distance to open app drawer from bottom (default: 42dp)
+- **Left edge width**: Width of the left-edge dock reveal zone (default: 20dp)
+- **Left edge threshold**: Minimum swipe distance to reveal dock (default: 24dp)
+- **Horizontal swipe threshold**: Minimum horizontal swipe to open/close app drawer (default: 80dp)
+- **Multitask swipe threshold**: Minimum swipe distance for multitask gesture (default: 80dp)
+
+## 10. Main Gestures
 
 Inside the launcher:
 
 - Left edge on Home: reveal Ubuntu Touch-style dock (BFB button, pinned apps, apps grid)
 - Tap outside dock: close dock
-- Swipe up from bottom on Home: open Apps
+- Swipe left on Home: open app drawer (side slide-in)
+- Swipe up from bottom on Home: open app drawer (bottom slide-up)
+- Swipe right in app drawer: close app drawer
+- Tap app drawer button when drawer is open: close app drawer (toggle behavior)
 - Swipe down/up on top indicators bar: expand/collapse full-width indicator panel
 - Swipe notifications sideways: dismiss
 - Long-press notifications: actions sheet (open, open app, snooze, dismiss)
 - Tap notification: deep link to specific content (SMS thread, email, etc.)
+- Right edge swipe: system back (requires accessibility service)
+- Multitask view: swipe app cards horizontally to dismiss
 
 On the lock screen:
 
@@ -162,18 +225,30 @@ Outside the launcher:
 
 - Left edge overlay handle: reveal dock sidebar if overlay permission is enabled
 
-## 9. Troubleshooting
+## 11. Troubleshooting
 
 ### Notifications not appearing
 
 - Make sure notification access is enabled for Lumo
 - Open `Lumo System` and refresh the state by leaving and returning to the app
 
+### Dismissed notifications reappearing
+
+- This is normal for some apps that re-post notifications frequently
+- Lumo applies a 5-second suppression cooldown to prevent flicker
+- If a notification keeps reappearing beyond 5 seconds, it is being re-posted by the source app
+
 ### Sidebar does not appear in other apps
 
 - Confirm overlay permission is granted
 - Confirm the gesture sidebar is enabled in `Lumo System`
 - Some OEM software may make overlay behavior less predictable than stock Android
+
+### Back gesture not working
+
+- Confirm `Lumo Back Gesture` is enabled in Android accessibility settings
+- The back gesture is automatically disabled when the app drawer is open
+- Check that the back gesture toggle is enabled in Lumo System → Gesture Toggles
 
 ### Keyboard does not appear
 
@@ -184,10 +259,13 @@ Outside the launcher:
 
 - That is expected to some degree because Android still owns the real keyguard
 
-## 10. Project Orientation
+## 12. Project Orientation
 
 If you are modifying the code:
 
 - Android implementation lives in `android-launcher/`
 - Legacy GTK prototype lives in `src/`
 - Migration notes live in `docs/android-launcher-migration.md`
+- Settings data class: `LumoLauncherSettings.kt`
+- Preferences keys: `LauncherPreferences.kt`
+- Settings flow: `LauncherRepository.observeLauncherSettings()` → `LauncherViewModel.launcherSettings` → `LumoLauncherApp(settings=...)`

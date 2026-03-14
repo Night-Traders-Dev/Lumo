@@ -25,8 +25,10 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
+import dev.nighttraders.lumo.launcher.data.LumoLauncherSettings
 import dev.nighttraders.lumo.launcher.data.LauncherRepository
 import dev.nighttraders.lumo.launcher.lockscreen.LumoLockState
+import dev.nighttraders.lumo.launcher.overlay.LumoBackGestureService
 import dev.nighttraders.lumo.launcher.overlay.LumoGestureSidebarService
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.nighttraders.lumo.launcher.notifications.hasNotificationListenerAccess
@@ -69,13 +71,19 @@ class MainActivity : ComponentActivity() {
             val isDefaultHome by viewModel.isDefaultHome.collectAsStateWithLifecycle()
             val systemStatus by rememberSystemStatus()
             val isDashLocked by LumoLockState.isLocked.collectAsStateWithLifecycle()
+            val launcherSettings by viewModel.launcherSettings.collectAsStateWithLifecycle()
 
             LumoLauncherTheme {
+                // Sync back gesture service settings
+                LumoBackGestureService.thresholdDp = launcherSettings.backGestureThresholdDp
+                LumoBackGestureService.handleWidthDp = launcherSettings.backGestureWidthDp
+
                 LumoLauncherApp(
                     uiState = uiState,
                     systemStatus = systemStatus,
                     isDefaultHome = isDefaultHome,
                     requestedPageIndex = requestedPageIndex.intValue,
+                    settings = launcherSettings,
                     isDashLocked = isDashLocked && lockScreenSecurityType.value != "none",
                     lockScreenSecurityType = lockScreenSecurityType.value,
                     onVerifyPin = { input ->

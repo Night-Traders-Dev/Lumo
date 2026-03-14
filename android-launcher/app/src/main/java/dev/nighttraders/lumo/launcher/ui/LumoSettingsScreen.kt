@@ -23,6 +23,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Apps
+import androidx.compose.material.icons.rounded.Gesture
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Keyboard
 import androidx.compose.material.icons.rounded.Lock
@@ -30,7 +32,11 @@ import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.SwipeRight
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.Wifi
+import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -87,6 +93,7 @@ fun LumoSettingsScreen(
     supportsLockScreenCompanion: Boolean,
     isLockScreenCompanionEnabled: Boolean,
     lockScreenSecurityType: String,
+    settings: dev.nighttraders.lumo.launcher.data.LumoLauncherSettings = dev.nighttraders.lumo.launcher.data.LumoLauncherSettings(),
     onRequestDefaultHome: () -> Unit,
     onRequestNotificationAccess: () -> Unit,
     onRequestOverlayPermission: () -> Unit,
@@ -105,6 +112,9 @@ fun LumoSettingsScreen(
     onOpenWifiSettings: () -> Unit,
     onOpenDisplaySettings: () -> Unit,
     onOpenWallpaperSettings: () -> Unit,
+    onOpenAccessibilitySettings: () -> Unit = {},
+    onUpdateIntSetting: (String, Int) -> Unit = { _, _ -> },
+    onUpdateBoolSetting: (String, Boolean) -> Unit = { _, _ -> },
     onRefresh: () -> Unit,
 ) {
     LazyColumn(
@@ -297,6 +307,34 @@ fun LumoSettingsScreen(
                 onSetPassword = onSetLockScreenPassword,
                 onClearSecurity = onClearLockScreenSecurity,
                 onVerifyCurrentSecurity = onVerifyCurrentSecurity,
+            )
+        }
+
+        // ── Appearance ───────────────────────────────────────────────────
+        item {
+            AppearanceSection(
+                iconSizeDp = settings.appIconSizeDp,
+                gridColumns = settings.appGridColumns,
+                railWidthDp = settings.dashRailWidthDp,
+                onIconSizeChange = { onUpdateIntSetting("app_icon_size_dp", it) },
+                onGridColumnsChange = { onUpdateIntSetting("app_grid_columns", it) },
+                onRailWidthChange = { onUpdateIntSetting("dash_rail_width_dp", it) },
+            )
+        }
+
+        // ── Gestures ────────────────────────────────────────────────────
+        item {
+            GestureTogglesSection(
+                settings = settings,
+                onToggle = onUpdateBoolSetting,
+                onOpenAccessibilitySettings = onOpenAccessibilitySettings,
+            )
+        }
+
+        item {
+            GestureSensitivitySection(
+                settings = settings,
+                onUpdate = onUpdateIntSetting,
             )
         }
 
@@ -685,6 +723,285 @@ private fun SecurityInputDialog(
             }
         },
     )
+}
+
+// ── Appearance Section ──────────────────────────────────────────────────────
+
+@Composable
+private fun AppearanceSection(
+    iconSizeDp: Int,
+    gridColumns: Int,
+    railWidthDp: Int,
+    onIconSizeChange: (Int) -> Unit,
+    onGridColumnsChange: (Int) -> Unit,
+    onRailWidthChange: (Int) -> Unit,
+) {
+    Surface(
+        color = Color(0x55120B14),
+        shape = RoundedCornerShape(28.dp),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 18.dp, vertical = 18.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Text(
+                text = "Appearance",
+                style = MaterialTheme.typography.titleLarge,
+                color = Color.White,
+            )
+            Text(
+                text = "Customise icon sizes, grid layout, and the launcher rail.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color(0xFFB8AFBA),
+            )
+
+            SettingSlider(
+                label = "App Icon Size",
+                value = iconSizeDp,
+                valueLabel = "${iconSizeDp}dp",
+                range = 36f..72f,
+                steps = 5,
+                onValueChange = onIconSizeChange,
+            )
+            SettingSlider(
+                label = "Grid Columns",
+                value = gridColumns,
+                valueLabel = "$gridColumns",
+                range = 3f..6f,
+                steps = 2,
+                onValueChange = onGridColumnsChange,
+            )
+            SettingSlider(
+                label = "Dash Rail Width",
+                value = railWidthDp,
+                valueLabel = "${railWidthDp}dp",
+                range = 52f..84f,
+                steps = 3,
+                onValueChange = onRailWidthChange,
+            )
+        }
+    }
+}
+
+// ── Gesture Toggles ─────────────────────────────────────────────────────────
+
+@Composable
+private fun GestureTogglesSection(
+    settings: dev.nighttraders.lumo.launcher.data.LumoLauncherSettings,
+    onToggle: (String, Boolean) -> Unit,
+    onOpenAccessibilitySettings: () -> Unit,
+) {
+    Surface(
+        color = Color(0x55120B14),
+        shape = RoundedCornerShape(28.dp),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 18.dp, vertical = 18.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = "Gestures",
+                style = MaterialTheme.typography.titleLarge,
+                color = Color.White,
+            )
+            Text(
+                text = "Toggle Ubuntu Touch-style gestures on or off.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color(0xFFB8AFBA),
+            )
+
+            SettingToggle(
+                label = "Back gesture (right edge)",
+                subtitle = "Swipe from right edge to go back in apps",
+                checked = settings.backGestureEnabled,
+                onCheckedChange = { onToggle("back_gesture_enabled", it) },
+            )
+            SettingToggle(
+                label = "Bottom edge (app drawer)",
+                subtitle = "Swipe up from bottom to open apps",
+                checked = settings.bottomEdgeGestureEnabled,
+                onCheckedChange = { onToggle("bottom_edge_gesture_enabled", it) },
+            )
+            SettingToggle(
+                label = "Left edge (launcher rail)",
+                subtitle = "Swipe from left edge to reveal the dash",
+                checked = settings.leftEdgeGestureEnabled,
+                onCheckedChange = { onToggle("left_edge_gesture_enabled", it) },
+            )
+            SettingToggle(
+                label = "Multitask swipe",
+                subtitle = "Swipe right on home to show recent apps",
+                checked = settings.multitaskGestureEnabled,
+                onCheckedChange = { onToggle("multitask_gesture_enabled", it) },
+            )
+            SettingToggle(
+                label = "Indicator pull-down",
+                subtitle = "Pull down from the top bar to expand indicators",
+                checked = settings.indicatorSwipeEnabled,
+                onCheckedChange = { onToggle("indicator_swipe_enabled", it) },
+            )
+
+            Spacer(modifier = Modifier.height(4.dp))
+            SettingActionRow(
+                action = SettingAction(
+                    icon = Icons.Rounded.Settings,
+                    label = "Open accessibility settings (back gesture)",
+                    onClick = onOpenAccessibilitySettings,
+                ),
+            )
+        }
+    }
+}
+
+// ── Gesture Sensitivity ──────────────────────────────────────────────────────
+
+@Composable
+private fun GestureSensitivitySection(
+    settings: dev.nighttraders.lumo.launcher.data.LumoLauncherSettings,
+    onUpdate: (String, Int) -> Unit,
+) {
+    Surface(
+        color = Color(0x55120B14),
+        shape = RoundedCornerShape(28.dp),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 18.dp, vertical = 18.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Text(
+                text = "Gesture Sensitivity",
+                style = MaterialTheme.typography.titleLarge,
+                color = Color.White,
+            )
+            Text(
+                text = "Adjust the size and sensitivity of each gesture zone.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color(0xFFB8AFBA),
+            )
+
+            SettingSlider(
+                label = "Back Gesture Width",
+                value = settings.backGestureWidthDp,
+                valueLabel = "${settings.backGestureWidthDp}dp",
+                range = 10f..40f,
+                steps = 5,
+                onValueChange = { onUpdate("back_gesture_width_dp", it) },
+            )
+            SettingSlider(
+                label = "Back Gesture Threshold",
+                value = settings.backGestureThresholdDp,
+                valueLabel = "${settings.backGestureThresholdDp}dp",
+                range = 20f..80f,
+                steps = 5,
+                onValueChange = { onUpdate("back_gesture_threshold_dp", it) },
+            )
+            SettingSlider(
+                label = "Bottom Edge Height",
+                value = settings.bottomEdgeHeightDp,
+                valueLabel = "${settings.bottomEdgeHeightDp}dp",
+                range = 40f..120f,
+                steps = 7,
+                onValueChange = { onUpdate("bottom_edge_height_dp", it) },
+            )
+            SettingSlider(
+                label = "Bottom Edge Threshold",
+                value = settings.bottomEdgeThresholdDp,
+                valueLabel = "${settings.bottomEdgeThresholdDp}dp",
+                range = 20f..80f,
+                steps = 5,
+                onValueChange = { onUpdate("bottom_edge_threshold_dp", it) },
+            )
+            SettingSlider(
+                label = "Left Edge Width",
+                value = settings.leftEdgeWidthDp,
+                valueLabel = "${settings.leftEdgeWidthDp}dp",
+                range = 10f..40f,
+                steps = 5,
+                onValueChange = { onUpdate("left_edge_width_dp", it) },
+            )
+            SettingSlider(
+                label = "Left Edge Threshold",
+                value = settings.leftEdgeThresholdDp,
+                valueLabel = "${settings.leftEdgeThresholdDp}dp",
+                range = 12f..48f,
+                steps = 5,
+                onValueChange = { onUpdate("left_edge_threshold_dp", it) },
+            )
+            SettingSlider(
+                label = "Horizontal Swipe Threshold",
+                value = settings.horizontalSwipeThresholdDp,
+                valueLabel = "${settings.horizontalSwipeThresholdDp}dp",
+                range = 40f..160f,
+                steps = 5,
+                onValueChange = { onUpdate("horizontal_swipe_threshold_dp", it) },
+            )
+            SettingSlider(
+                label = "Multitask Swipe Threshold",
+                value = settings.multitaskSwipeThresholdDp,
+                valueLabel = "${settings.multitaskSwipeThresholdDp}dp",
+                range = 40f..160f,
+                steps = 5,
+                onValueChange = { onUpdate("multitask_swipe_threshold_dp", it) },
+            )
+        }
+    }
+}
+
+// ── Reusable slider & toggle ────────────────────────────────────────────────
+
+@Composable
+private fun SettingSlider(
+    label: String,
+    value: Int,
+    valueLabel: String,
+    range: ClosedFloatingPointRange<Float>,
+    steps: Int,
+    onValueChange: (Int) -> Unit,
+) {
+    Column {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(text = label, style = MaterialTheme.typography.bodyMedium, color = Color.White)
+            Text(text = valueLabel, style = MaterialTheme.typography.bodyMedium, color = Color(0xFFE95420))
+        }
+        Slider(
+            value = value.toFloat(),
+            onValueChange = { onValueChange(it.toInt()) },
+            valueRange = range,
+            steps = steps,
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+}
+
+@Composable
+private fun SettingToggle(
+    label: String,
+    subtitle: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = Color(0x33000000),
+        shape = RoundedCornerShape(18.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(text = label, style = MaterialTheme.typography.bodyLarge, color = Color.White)
+                Text(text = subtitle, style = MaterialTheme.typography.bodySmall, color = Color(0xFFB8AFBA))
+            }
+            Switch(
+                checked = checked,
+                onCheckedChange = onCheckedChange,
+            )
+        }
+    }
 }
 
 fun Context.readLumoKeyboardStatus(): LumoKeyboardStatus {

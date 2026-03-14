@@ -8,7 +8,9 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import dev.nighttraders.lumo.launcher.data.LaunchableApp
+import dev.nighttraders.lumo.launcher.data.LauncherPreferences
 import dev.nighttraders.lumo.launcher.data.LauncherRepository
+import dev.nighttraders.lumo.launcher.data.LumoLauncherSettings
 import dev.nighttraders.lumo.launcher.notifications.LauncherNotification
 import dev.nighttraders.lumo.launcher.notifications.LauncherNotificationCenter
 import dev.nighttraders.lumo.launcher.notifications.LumoNotificationListenerService
@@ -57,6 +59,17 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     )
 
     val isDefaultHome: StateFlow<Boolean> = defaultHome
+
+    val launcherSettings: StateFlow<LumoLauncherSettings> = repository.observeLauncherSettings()
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = LumoLauncherSettings(),
+        )
+
+    fun <T> updateSetting(key: androidx.datastore.preferences.core.Preferences.Key<T>, value: T) {
+        viewModelScope.launch { repository.updateSetting(key, value) }
+    }
 
     init {
         LauncherNotificationCenter.setAccessEnabled(notificationAccess.value)
