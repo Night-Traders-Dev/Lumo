@@ -94,6 +94,8 @@ class LumoNotificationListenerService : NotificationListenerService() {
 
             return runCatching {
                 intent.send()
+                listener.cancelNotification(sbn.key)
+                LauncherNotificationCenter.remove(key)
                 LauncherNotificationCenter.dismissHeadsUp(key)
                 true
             }

@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.view.inputmethod.InputMethodManager
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -19,6 +20,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
 import dev.nighttraders.lumo.launcher.data.LauncherRepository
+import dev.nighttraders.lumo.launcher.lockscreen.LumoLockScreenCompanionService
 import dev.nighttraders.lumo.launcher.overlay.LumoGestureSidebarService
 import dev.nighttraders.lumo.launcher.notifications.hasNotificationListenerAccess
 import dev.nighttraders.lumo.launcher.ui.LumoKeyboardStatus
@@ -40,6 +42,9 @@ class SettingsActivity : ComponentActivity() {
     private val keyboardStatus = mutableStateOf(LumoKeyboardStatus())
     private val hasOverlayPermission = mutableStateOf(false)
     private val isGestureSidebarEnabled = mutableStateOf(false)
+    private val hasFullScreenIntentPermission = mutableStateOf(false)
+    private val supportsLockScreenCompanion = mutableStateOf(LumoLockScreenCompanionService.isWakeCompanionSupported())
+    private val isLockScreenCompanionEnabled = mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -55,6 +60,9 @@ class SettingsActivity : ComponentActivity() {
                     keyboardStatus = keyboardStatus.value,
                     hasOverlayPermission = hasOverlayPermission.value,
                     isGestureSidebarEnabled = isGestureSidebarEnabled.value,
+                    hasFullScreenIntentPermission = hasFullScreenIntentPermission.value,
+                    supportsLockScreenCompanion = supportsLockScreenCompanion.value,
+                    isLockScreenCompanionEnabled = isLockScreenCompanionEnabled.value,
                     onRequestDefaultHome = ::requestDefaultHomeRole,
                     onRequestNotificationAccess = ::requestNotificationAccess,
                     onRequestOverlayPermission = ::openOverlayPermissionSettings,
@@ -63,6 +71,9 @@ class SettingsActivity : ComponentActivity() {
                     onOpenKeyboardSettings = ::openInputMethodSettings,
                     onShowInputMethodPicker = ::showInputMethodPicker,
                     onOpenLockScreen = ::openLockScreen,
+                    onOpenLockScreenPermissionSettings = ::openLockScreenPermissionSettings,
+                    onEnableLockScreenCompanion = ::enableLockScreenCompanion,
+                    onDisableLockScreenCompanion = ::disableLockScreenCompanion,
                     onOpenWifiSettings = { startActivity(Intent(Settings.ACTION_WIFI_SETTINGS)) },
                     onOpenDisplaySettings = { startActivity(Intent(Settings.ACTION_DISPLAY_SETTINGS)) },
                     onOpenWallpaperSettings = { startActivity(Intent(Intent.ACTION_SET_WALLPAPER)) },
@@ -83,9 +94,18 @@ class SettingsActivity : ComponentActivity() {
         hasNotificationAccess.value = hasNotificationListenerAccess()
         keyboardStatus.value = readLumoKeyboardStatus()
         hasOverlayPermission.value = Settings.canDrawOverlays(this)
+        hasFullScreenIntentPermission.value = LumoLockScreenCompanionService.hasFullScreenIntentPermission(this)
+        supportsLockScreenCompanion.value = LumoLockScreenCompanionService.isWakeCompanionSupported()
         lifecycleScope.launch {
             val overlayEnabled = repository.isOverlaySidebarEnabled()
             isGestureSidebarEnabled.value = overlayEnabled
+            val storedLockScreenEnabled = repository.isLockScreenCompanionEnabled()
+            val effectiveLockScreenEnabled =
+                storedLockScreenEnabled && supportsLockScreenCompanion.value
+            if (storedLockScreenEnabled != effectiveLockScreenEnabled) {
+                repository.setLockScreenCompanionEnabled(effectiveLockScreenEnabled)
+            }
+            isLockScreenCompanionEnabled.value = effectiveLockScreenEnabled
             LumoGestureSidebarService.sync(this@SettingsActivity, overlayEnabled)
         }
     }
@@ -145,6 +165,45 @@ class SettingsActivity : ComponentActivity() {
 
     private fun openLockScreen() {
         startActivity(LockScreenActivity.createIntent(this))
+    }
+
+    private fun openLockScreenPermissionSettings() {
+        startActivity(LumoLockScreenCompanionService.createFullScreenIntentSettingsIntent(this))
+    }
+
+    private fun enableLockScreenCompanion() {
+        if (!LumoLockScreenCompanionService.hasFullScreenIntentPermission(this)) {
+            openLockScreenPermissionSettings()
+            return
+        }
+
+        if (!LumoLockScreenCompanionService.isWakeCompanionSupported()) {
+            lifecycleScope.launch {
+                repository.setLockScreenCompanionEnabled(false)
+                isLockScreenCompanionEnabled.value = false
+            }
+            Toast.makeText(
+                this,
+                getString(R.string.lock_screen_companion_unavailable_message),
+                Toast.LENGTH_LONG,
+            ).show()
+            openLockScreen()
+            return
+        }
+
+        lifecycleScope.launch {
+            repository.setLockScreenCompanionEnabled(true)
+            isLockScreenCompanionEnabled.value = true
+            LumoLockScreenCompanionService.start(this@SettingsActivity)
+        }
+    }
+
+    private fun disableLockScreenCompanion() {
+        lifecycleScope.launch {
+            repository.setLockScreenCompanionEnabled(false)
+            isLockScreenCompanionEnabled.value = false
+            LumoLockScreenCompanionService.stop(this@SettingsActivity)
+        }
     }
 
     private fun configureSystemBars() {

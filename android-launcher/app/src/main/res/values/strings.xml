@@ -10,4 +10,14 @@
     <string name="notification_listener_label">Lumo Notifications</string>
     <string name="lumo_keyboard_label">Lumo Keyboard</string>
     <string name="gesture_sidebar_label">Lumo Gesture Sidebar</string>
+    <string name="lock_screen_service_label">Lumo Wake Lock Screen</string>
+    <string name="lock_screen_service_channel_name">Lumo Wake Companion</string>
+    <string name="lock_screen_service_channel_description">Keeps the Lumo wake lock screen companion running.</string>
+    <string name="lock_screen_wake_channel_name">Lumo Lock Screen Wake</string>
+    <string name="lock_screen_wake_channel_description">Shows the Lumo lock screen when the display wakes.</string>
+    <string name="lock_screen_service_notification_title">Lumo wake lock screen is active</string>
+    <string name="lock_screen_service_notification_text">Lumo is ready to appear over the lock flow when the screen wakes.</string>
+    <string name="lock_screen_wake_notification_title">Lumo lock screen ready</string>
+    <string name="lock_screen_wake_notification_text">Tap to open the Lumo lock screen surface.</string>
+    <string name="lock_screen_companion_unavailable_message">Android 14 and newer block Lumo\'s wake companion here. Opening the lock screen preview instead.</string>
 </resources>

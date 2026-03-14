@@ -70,6 +70,9 @@ fun LumoSettingsScreen(
     keyboardStatus: LumoKeyboardStatus,
     hasOverlayPermission: Boolean,
     isGestureSidebarEnabled: Boolean,
+    hasFullScreenIntentPermission: Boolean,
+    supportsLockScreenCompanion: Boolean,
+    isLockScreenCompanionEnabled: Boolean,
     onRequestDefaultHome: () -> Unit,
     onRequestNotificationAccess: () -> Unit,
     onRequestOverlayPermission: () -> Unit,
@@ -78,6 +81,9 @@ fun LumoSettingsScreen(
     onOpenKeyboardSettings: () -> Unit,
     onShowInputMethodPicker: () -> Unit,
     onOpenLockScreen: () -> Unit,
+    onOpenLockScreenPermissionSettings: () -> Unit,
+    onEnableLockScreenCompanion: () -> Unit,
+    onDisableLockScreenCompanion: () -> Unit,
     onOpenWifiSettings: () -> Unit,
     onOpenDisplaySettings: () -> Unit,
     onOpenWallpaperSettings: () -> Unit,
@@ -214,14 +220,55 @@ fun LumoSettingsScreen(
         item {
             SettingSection(
                 title = "Lock Screen",
-                subtitle = "Launches the Lumo lock screen surface over Android's own lock flow.",
-                actions = listOf(
-                    SettingAction(
-                        icon = Icons.Rounded.Lock,
-                        label = "Open Lumo lock screen",
-                        onClick = onOpenLockScreen,
-                    ),
-                ),
+                subtitle = when {
+                    !supportsLockScreenCompanion ->
+                        "Android 14 and newer block Lumo's wake companion here. You can still preview the Ubuntu Touch-style lock screen manually."
+                    isLockScreenCompanionEnabled && hasFullScreenIntentPermission ->
+                        "Lumo will surface over the wake flow, then hand unlock back to Android."
+                    hasFullScreenIntentPermission ->
+                        "Full-screen access is ready. Enable the wake companion to show Lumo on wake."
+                    else ->
+                        "Grant full-screen access so Lumo can appear over the stock lock screen on wake."
+                },
+                actions = buildList {
+                    add(
+                        SettingAction(
+                            icon = Icons.Rounded.Lock,
+                            label = if (hasFullScreenIntentPermission) {
+                                "Full-screen lock access enabled"
+                            } else {
+                                "Allow full-screen lock screen"
+                            },
+                            onClick = onOpenLockScreenPermissionSettings,
+                        ),
+                    )
+                    add(
+                        SettingAction(
+                            icon = Icons.Rounded.Lock,
+                            label = if (!supportsLockScreenCompanion) {
+                                "Wake companion unavailable on this Android version"
+                            } else if (isLockScreenCompanionEnabled) {
+                                "Disable wake lock screen"
+                            } else {
+                                "Enable wake lock screen"
+                            },
+                            onClick = if (!supportsLockScreenCompanion) {
+                                onOpenLockScreen
+                            } else if (isLockScreenCompanionEnabled) {
+                                onDisableLockScreenCompanion
+                            } else {
+                                onEnableLockScreenCompanion
+                            },
+                        ),
+                    )
+                    add(
+                        SettingAction(
+                            icon = Icons.Rounded.Lock,
+                            label = "Preview Lumo lock screen",
+                            onClick = onOpenLockScreen,
+                        ),
+                    )
+                },
             )
         }
 
@@ -324,8 +371,12 @@ private fun SettingActionRow(
 
 fun Context.readLumoKeyboardStatus(): LumoKeyboardStatus {
     val inputMethodManager = getSystemService(InputMethodManager::class.java)
-    val enabledMethods = inputMethodManager?.enabledInputMethodList.orEmpty()
-    val currentMethod = inputMethodManager?.let(::currentInputMethodInfoCompat)
+    val enabledMethods = runCatching {
+        inputMethodManager?.enabledInputMethodList.orEmpty()
+    }.getOrDefault(emptyList())
+    val currentMethod = runCatching {
+        inputMethodManager?.let(::currentInputMethodInfoCompat)
+    }.getOrNull()
 
     val isEnabled = enabledMethods.any { method ->
         method.id == LUMO_INPUT_METHOD_ID ||

@@ -2,14 +2,17 @@ package dev.nighttraders.lumo.launcher.input
 
 import android.content.res.ColorStateList
 import android.graphics.Color
+import android.graphics.Rect
 import android.inputmethodservice.InputMethodService
 import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
+import android.text.TextUtils
 import android.text.InputType
 import android.view.Gravity
 import android.view.KeyEvent
+import android.view.MotionEvent
 import android.view.View
 import android.view.inputmethod.CompletionInfo
 import android.view.inputmethod.EditorInfo
@@ -23,18 +26,37 @@ import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import androidx.core.content.getSystemService
+import java.util.Locale
+import kotlin.math.abs
 
 class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCheckerSessionListener {
     private var shifted = false
+    private var autoCapitalization = false
     private var symbolMode = false
     private var alternateSymbolMode = false
+
     private var spellCheckerSession: SpellCheckerSession? = null
+
     private lateinit var rootView: LinearLayout
     private lateinit var suggestionStrip: LinearLayout
     private lateinit var keysContainer: LinearLayout
+
     private var appSuggestions: List<SuggestionCandidate> = emptyList()
+    private var localSuggestions: List<SuggestionCandidate> = emptyList()
     private var spellSuggestions: List<SuggestionCandidate> = emptyList()
+    private var swipePreviewSuggestions: List<SuggestionCandidate> = emptyList()
     private var currentWord = ""
+    private var lastSuggestionRequestWord = ""
+    private var lastSuggestionResultWord = ""
+    private var pendingAutoCorrection: SuggestionCandidate? = null
+
+    private val letterKeyTargets = mutableListOf<KeyTouchTarget>()
+    private val swipeTrail = mutableListOf<String>()
+    private var swipeInProgress = false
+    private var swipeStartX = 0f
+    private var swipeStartY = 0f
+
+    private val wordEngine by lazy { KeyboardWordEngine.get(applicationContext) }
 
     override fun onCreate() {
         super.onCreate()
@@ -92,6 +114,7 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
             )
         }
 
+        updateAutoCapitalization()
         rebuildKeyboardRows()
         refreshSuggestionStrip()
         return rootView
@@ -103,8 +126,14 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
         symbolMode = false
         alternateSymbolMode = false
         appSuggestions = emptyList()
+        localSuggestions = emptyList()
         spellSuggestions = emptyList()
+        swipePreviewSuggestions = emptyList()
         currentWord = ""
+        lastSuggestionRequestWord = ""
+        lastSuggestionResultWord = ""
+        pendingAutoCorrection = null
+        updateAutoCapitalization()
         rebuildKeyboardRows()
         refreshSuggestionStrip()
     }
@@ -112,12 +141,20 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
     override fun onDisplayCompletions(completions: Array<CompletionInfo>?) {
         appSuggestions = completions.orEmpty()
             .mapNotNull { completion ->
-                completion.text?.toString()
+                completion.text
+                    ?.toString()
+                    ?.trim()
                     ?.takeIf(String::isNotBlank)
-                    ?.let { text -> SuggestionCandidate(text = text, completion = completion) }
+                    ?.let { text ->
+                        SuggestionCandidate(
+                            text = text,
+                            completion = completion,
+                        )
+                    }
             }
-            .distinctBy { suggestion -> suggestion.text.lowercase() }
+            .distinctBy { suggestion -> suggestion.text.lowercase(Locale.getDefault()) }
             .take(3)
+        refreshLocalSuggestionState()
         refreshSuggestionStrip()
     }
 
@@ -136,28 +173,16 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
     override fun onEvaluateFullscreenMode(): Boolean = false
 
     override fun onGetSuggestions(results: Array<SuggestionsInfo>) {
-        val word = currentWordBeforeCursor()
-        if (word.isBlank()) {
-            spellSuggestions = emptyList()
-            refreshSuggestionStrip()
-            return
-        }
-
-        spellSuggestions = results
-            .flatMap { info ->
+        mergeSpellSuggestions(
+            sourceWord = lastSuggestionRequestWord,
+            suggestions = results.flatMap { info ->
                 (0 until info.suggestionsCount).mapNotNull { index ->
                     info.getSuggestionAt(index)
                         ?.trim()
-                        ?.takeIf { suggestion ->
-                            suggestion.isNotBlank() && !suggestion.equals(word, ignoreCase = true)
-                        }
+                        ?.takeIf(String::isNotBlank)
                 }
-            }
-            .distinctBy { suggestion -> suggestion.lowercase() }
-            .take(3)
-            .map(::SuggestionCandidate)
-
-        refreshSuggestionStrip()
+            },
+        )
     }
 
     override fun onGetSentenceSuggestions(results: Array<SentenceSuggestionsInfo>) {
@@ -175,21 +200,48 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
             }
         }
 
-        if (collected.isEmpty()) {
+        mergeSpellSuggestions(
+            sourceWord = lastSuggestionRequestWord,
+            suggestions = collected,
+        )
+    }
+
+    private fun mergeSpellSuggestions(
+        sourceWord: String,
+        suggestions: List<String>,
+    ) {
+        val normalizedWord = sourceWord.trim()
+        if (normalizedWord.isNotBlank() &&
+            !normalizedWord.equals(currentWord, ignoreCase = true)
+        ) {
+            return
+        }
+        lastSuggestionResultWord = normalizedWord
+
+        if (normalizedWord.length < 2) {
+            spellSuggestions = emptyList()
+            pendingAutoCorrection = null
+            refreshSuggestionStrip()
             return
         }
 
-        val activeWord = currentWordBeforeCursor()
-        spellSuggestions = collected
-            .filterNot { suggestion -> suggestion.equals(activeWord, ignoreCase = true) }
-            .distinctBy { suggestion -> suggestion.lowercase() }
-            .take(3)
-            .map(::SuggestionCandidate)
+        spellSuggestions = suggestions
+            .filterNot { suggestion -> suggestion.equals(normalizedWord, ignoreCase = true) }
+            .distinctBy { suggestion -> suggestion.lowercase(Locale.getDefault()) }
+            .take(4)
+            .map { suggestion ->
+                SuggestionCandidate(
+                    text = applyCaseToSuggestion(suggestion, normalizedWord),
+                )
+            }
+
+        refreshLocalSuggestionState()
         refreshSuggestionStrip()
     }
 
     private fun rebuildKeyboardRows() {
         keysContainer.removeAllViews()
+        letterKeyTargets.clear()
 
         keyboardLayoutForCurrentMode().forEach { row ->
             keysContainer.addView(createMixedRow(row))
@@ -202,7 +254,7 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
                 listOf("q", "w", "e", "r", "t", "y", "u", "i", "o", "p").map(::letterKey),
                 listOf("a", "s", "d", "f", "g", "h", "j", "k", "l").map(::letterKey),
                 buildList {
-                    add(actionKey(if (shifted) "SHIFT" else "Shift", weight = 1.4f, highlighted = shifted) {
+                    add(actionKey(if (isShiftActive()) "SHIFT" else "Shift", weight = 1.4f, highlighted = isShiftActive()) {
                         toggleShift()
                     })
                     addAll(listOf("z", "x", "c", "v", "b", "n", "m").map(::letterKey))
@@ -251,7 +303,13 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
         }
 
     private fun letterKey(value: String): KeySpec =
-        textKey(if (shifted) value.uppercase() else value)
+        textKey(
+            if (isShiftActive()) {
+                value.uppercase(Locale.getDefault())
+            } else {
+                value
+            },
+        )
 
     private fun createMixedRow(keys: List<KeySpec>): LinearLayout =
         LinearLayout(this).apply {
@@ -294,21 +352,41 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
                 marginStart = dp(3)
                 marginEnd = dp(3)
             }
-            setOnClickListener { handleKey(spec) }
+
+            if (spec.isLetterKey) {
+                letterKeyTargets += KeyTouchTarget(
+                    button = this,
+                    value = spec.value.lowercase(Locale.getDefault()),
+                    displayValue = spec.value,
+                )
+                setOnTouchListener(LetterSwipeTouchListener(spec))
+            } else {
+                setOnClickListener { handleKey(spec) }
+            }
         }
 
     private fun handleKey(spec: KeySpec) {
         performKeyHaptic()
+
         spec.action?.invoke()
         if (spec.action != null) {
             return
         }
 
-        commitText(spec.value)
-        if (!symbolMode && shifted && spec.value.length == 1 && spec.value[0].isLetter()) {
-            shifted = false
-            rebuildKeyboardRows()
+        if (spec.isLetterKey || spec.value.all(Char::isDigit)) {
+            commitWordCharacter(spec.value)
+        } else {
+            commitDelimiter(spec.value)
         }
+    }
+
+    private fun commitWordCharacter(value: String) {
+        commitText(value)
+
+        if (shifted) {
+            shifted = false
+        }
+
         updateSuggestions()
     }
 
@@ -338,21 +416,46 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
     private fun closeSymbols() {
         symbolMode = false
         alternateSymbolMode = false
+        updateAutoCapitalization()
         rebuildKeyboardRows()
         updateSuggestions()
     }
 
     private fun commitSpace() {
+        performKeyHaptic()
+        applyAutoCorrectionIfNeeded()
         commitText(" ")
-        clearSuggestions()
+        updateSuggestions()
+    }
+
+    private fun commitDelimiter(delimiter: String) {
+        applyAutoCorrectionIfNeeded()
+        commitText(delimiter)
+        updateSuggestions()
+    }
+
+    private fun applyAutoCorrectionIfNeeded() {
+        val activeWord = currentWordBeforeCursor()
+        val correction = resolveAutoCorrection(activeWord)
+
+        if (activeWord.isBlank() || correction == null) {
+            return
+        }
+
+        currentInputConnection?.deleteSurroundingText(activeWord.length, 0)
+        currentInputConnection?.commitText(correction.text, 1)
     }
 
     private fun backspace() {
+        performKeyHaptic()
         currentInputConnection?.deleteSurroundingText(1, 0)
         updateSuggestions()
     }
 
     private fun handleEnter() {
+        performKeyHaptic()
+        applyAutoCorrectionIfNeeded()
+
         val editorInfo = currentInputEditorInfo
         if (editorInfo != null &&
             editorInfo.imeOptions and EditorInfo.IME_MASK_ACTION != EditorInfo.IME_ACTION_NONE &&
@@ -360,23 +463,34 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
         ) {
             currentInputConnection?.performEditorAction(editorInfo.imeOptions and EditorInfo.IME_MASK_ACTION)
             clearSuggestions()
+            updateAutoCapitalization()
             return
         }
 
         currentInputConnection?.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER))
         currentInputConnection?.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER))
         clearSuggestions()
+        updateAutoCapitalization()
     }
 
     private fun updateSuggestions() {
         currentWord = currentWordBeforeCursor()
-        if (currentWord.length < 2) {
+        updateAutoCapitalization()
+
+        if (!currentWord.equals(lastSuggestionResultWord, ignoreCase = true)) {
             spellSuggestions = emptyList()
+        }
+        swipePreviewSuggestions = emptyList()
+        refreshLocalSuggestionState()
+
+        if (currentWord.length < 2) {
             refreshSuggestionStrip()
             return
         }
 
-        spellCheckerSession?.getSuggestions(TextInfo(currentWord), 3)
+        lastSuggestionRequestWord = currentWord
+        spellCheckerSession?.getSuggestions(TextInfo(currentWord), 4)
+        spellCheckerSession?.getSentenceSuggestions(arrayOf(TextInfo(currentWord)), 4)
         refreshSuggestionStrip()
     }
 
@@ -386,16 +500,22 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
         }
 
         suggestionStrip.removeAllViews()
-        val suggestions = buildList {
-            if (currentWord.isNotBlank()) {
-                add(SuggestionCandidate(text = currentWord))
+        val suggestions = if (swipeInProgress && swipePreviewSuggestions.isNotEmpty()) {
+            swipePreviewSuggestions
+        } else {
+            buildList {
+                pendingAutoCorrection?.let(::add)
+                if (currentWord.isNotBlank()) {
+                    add(SuggestionCandidate(text = currentWord))
+                }
+                addAll(localSuggestions)
+                addAll(appSuggestions)
+                addAll(spellSuggestions)
             }
-            addAll(appSuggestions)
-            addAll(spellSuggestions)
         }
-            .filter { candidate -> candidate.text.isNotBlank() }
-            .distinctBy { candidate -> candidate.text.lowercase() }
-            .take(3)
+            .filter { suggestion -> suggestion.text.isNotBlank() }
+            .distinctBy { suggestion -> suggestion.text.lowercase(Locale.getDefault()) }
+            .take(4)
 
         if (suggestions.isEmpty()) {
             suggestionStrip.addView(
@@ -414,7 +534,7 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
                 createSuggestionButton(
                     text = suggestion.text,
                     enabled = true,
-                    primary = index == 0,
+                    primary = index == 0 && suggestion != SuggestionCandidate(currentWord),
                 ) {
                     applySuggestion(suggestion)
                 },
@@ -461,6 +581,7 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
         suggestion.completion?.let { completion ->
             currentInputConnection?.commitCompletion(completion)
             clearSuggestions()
+            updateAutoCapitalization()
             return
         }
 
@@ -468,14 +589,18 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
         if (activeWord.isNotBlank()) {
             currentInputConnection?.deleteSurroundingText(activeWord.length, 0)
         }
-        currentInputConnection?.commitText(suggestion.text, 1)
+        currentInputConnection?.commitText(applyCaseToSuggestion(suggestion.text, activeWord), 1)
         clearSuggestions()
+        updateSuggestions()
     }
 
     private fun clearSuggestions() {
-        currentWord = ""
+        currentWord = currentWordBeforeCursor()
         spellSuggestions = emptyList()
         appSuggestions = emptyList()
+        localSuggestions = emptyList()
+        swipePreviewSuggestions = emptyList()
+        pendingAutoCorrection = null
         refreshSuggestionStrip()
     }
 
@@ -483,6 +608,175 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
         val textBeforeCursor = currentInputConnection?.getTextBeforeCursor(64, 0)?.toString().orEmpty()
         return textBeforeCursor.takeLastWhile { character ->
             character.isLetterOrDigit() || character == '\'' || character == '_'
+        }
+    }
+
+    private fun updateAutoCapitalization() {
+        val nextAutoCapitalization = shouldAutoCapitalize()
+        if (autoCapitalization != nextAutoCapitalization) {
+            autoCapitalization = nextAutoCapitalization
+            if (::keysContainer.isInitialized && !symbolMode) {
+                rebuildKeyboardRows()
+            }
+        }
+    }
+
+    private fun shouldAutoCapitalize(): Boolean {
+        val inputType = currentInputEditorInfo?.inputType ?: 0
+        if (inputType and InputType.TYPE_MASK_CLASS != InputType.TYPE_CLASS_TEXT) {
+            return false
+        }
+
+        if ((currentInputConnection?.getCursorCapsMode(TextUtils.CAP_MODE_SENTENCES) ?: 0) != 0) {
+            return true
+        }
+
+        val textBeforeCursor = currentInputConnection?.getTextBeforeCursor(200, 0)?.toString().orEmpty()
+        if (textBeforeCursor.isBlank()) {
+            return true
+        }
+
+        var index = textBeforeCursor.length - 1
+        while (index >= 0 && textBeforeCursor[index].isWhitespace()) {
+            index -= 1
+        }
+        while (index >= 0 && textBeforeCursor[index] in AUTO_CAP_TRAILING_CHARACTERS) {
+            index -= 1
+        }
+
+        if (index < 0) {
+            return true
+        }
+
+        return textBeforeCursor[index] in ".!?\n"
+    }
+
+    private fun isShiftActive(): Boolean = shifted || autoCapitalization
+
+    private fun refreshLocalSuggestionState() {
+        localSuggestions = if (currentWord.isBlank() || symbolMode) {
+            emptyList()
+        } else {
+            wordEngine.predictiveSuggestions(currentWord, maxResults = 4)
+                .map { suggestion ->
+                    SuggestionCandidate(
+                        text = applyCaseToSuggestion(suggestion, currentWord),
+                    )
+                }
+        }
+        pendingAutoCorrection = resolveAutoCorrection(currentWord)
+    }
+
+    private fun applyCaseToSuggestion(
+        suggestion: String,
+        sourceWord: String,
+    ): String {
+        if (sourceWord.isNotBlank()) {
+            return when {
+                sourceWord.all(Char::isUpperCase) -> suggestion.uppercase(Locale.getDefault())
+                sourceWord.first().isUpperCase() -> suggestion.replaceFirstChar { character ->
+                    character.titlecase(Locale.getDefault())
+                }
+                else -> suggestion.lowercase(Locale.getDefault())
+            }
+        }
+
+        if (isShiftActive()) {
+            return suggestion.replaceFirstChar { character ->
+                character.titlecase(Locale.getDefault())
+            }
+        }
+
+        return suggestion
+    }
+
+    private fun resolveAutoCorrection(sourceWord: String): SuggestionCandidate? {
+        if (sourceWord.length < 2) {
+            return null
+        }
+
+        val correction = wordEngine.autoCorrection(
+            rawInput = sourceWord,
+            externalCandidates = buildList {
+                addAll(appSuggestions.map { suggestion -> suggestion.text })
+                addAll(spellSuggestions.map { suggestion -> suggestion.text })
+                addAll(localSuggestions.map { suggestion -> suggestion.text })
+            },
+        )
+
+        val correctedText = correction
+            ?.takeIf { candidate ->
+                !candidate.equals(sourceWord, ignoreCase = true)
+            }
+            ?.let { candidate ->
+                applyCaseToSuggestion(candidate, sourceWord)
+            }
+            ?: return null
+
+        return SuggestionCandidate(text = correctedText)
+    }
+
+    private fun resolveSwipeWord(trace: String): String {
+        val sourceWord = currentWordBeforeCursor()
+        val engineSuggestions = wordEngine.swipeSuggestions(trace, maxResults = 4)
+        val mergedCandidates = buildList {
+            addAll(engineSuggestions)
+            if (lastSuggestionResultWord.equals(trace, ignoreCase = true)) {
+                addAll(spellSuggestions.map { suggestion -> suggestion.text })
+            }
+            addAll(localSuggestions.map { suggestion -> suggestion.text })
+        }
+
+        val bestCandidate = mergedCandidates
+            .firstOrNull { candidate -> candidate.isNotBlank() }
+            ?: trace.lowercase(Locale.getDefault())
+
+        return applyCaseToSuggestion(bestCandidate, sourceWord)
+    }
+
+    private fun commitSwipeTrail() {
+        val trace = swipeTrail.joinToString(separator = "")
+        if (trace.length < 2) {
+            return
+        }
+
+        performKeyHaptic()
+        val activeWord = currentWordBeforeCursor()
+        val resolvedWord = resolveSwipeWord(trace)
+        if (activeWord.isNotBlank()) {
+            currentInputConnection?.deleteSurroundingText(activeWord.length, 0)
+        }
+        commitText(resolvedWord)
+
+        if (shifted) {
+            shifted = false
+        }
+
+        swipeTrail.clear()
+        swipePreviewSuggestions = emptyList()
+        updateSuggestions()
+    }
+
+    private fun findLetterKeyTarget(rawX: Float, rawY: Float): KeyTouchTarget? {
+        val hitRect = Rect()
+        return letterKeyTargets.firstOrNull { target ->
+            target.button.getGlobalVisibleRect(hitRect) &&
+                hitRect.contains(rawX.toInt(), rawY.toInt())
+        }
+    }
+
+    private fun addSwipeValue(value: String) {
+        if (swipeTrail.lastOrNull() != value) {
+            swipeTrail += value
+            swipePreviewSuggestions = wordEngine.swipeSuggestions(
+                rawTrace = swipeTrail.joinToString(separator = ""),
+                maxResults = 4,
+            ).map { suggestion ->
+                SuggestionCandidate(
+                    text = applyCaseToSuggestion(suggestion, currentWordBeforeCursor()),
+                )
+            }
+            refreshSuggestionStrip()
         }
     }
 
@@ -500,31 +794,103 @@ class LumoInputMethodService : InputMethodService(), SpellCheckerSession.SpellCh
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
+    private inner class LetterSwipeTouchListener(
+        private val spec: KeySpec,
+    ) : View.OnTouchListener {
+        override fun onTouch(view: View, event: MotionEvent): Boolean =
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    swipeInProgress = false
+                    swipeTrail.clear()
+                    swipeStartX = event.rawX
+                    swipeStartY = event.rawY
+                    addSwipeValue(spec.value.lowercase(Locale.getDefault()))
+                    true
+                }
+
+                MotionEvent.ACTION_MOVE -> {
+                    findLetterKeyTarget(event.rawX, event.rawY)?.let { target ->
+                        addSwipeValue(target.value)
+                    }
+
+                    if (!swipeInProgress &&
+                        (abs(event.rawX - swipeStartX) > dp(10) ||
+                            abs(event.rawY - swipeStartY) > dp(10) ||
+                            swipeTrail.size > 1)
+                    ) {
+                        swipeInProgress = true
+                    }
+                    true
+                }
+
+                MotionEvent.ACTION_UP -> {
+                    if (swipeInProgress && swipeTrail.size > 1) {
+                        commitSwipeTrail()
+                    } else {
+                        handleKey(spec)
+                    }
+                    swipeTrail.clear()
+                    swipePreviewSuggestions = emptyList()
+                    swipeInProgress = false
+                    true
+                }
+
+                MotionEvent.ACTION_CANCEL -> {
+                    swipeTrail.clear()
+                    swipePreviewSuggestions = emptyList()
+                    refreshSuggestionStrip()
+                    swipeInProgress = false
+                    true
+                }
+
+                else -> false
+            }
+    }
+
     private data class KeySpec(
         val value: String,
         val isSpecial: Boolean,
         val weight: Float,
         val highlighted: Boolean = false,
         val action: (() -> Unit)? = null,
-    )
+    ) {
+        val isLetterKey: Boolean
+            get() = !isSpecial && value.length == 1 && value[0].isLetter()
+    }
 
     private data class SuggestionCandidate(
         val text: String,
         val completion: CompletionInfo? = null,
     )
 
-    private fun textKey(value: String): KeySpec = KeySpec(value = value, isSpecial = false, weight = 1f)
+    private data class KeyTouchTarget(
+        val button: Button,
+        val value: String,
+        val displayValue: String,
+    )
+
+    private companion object {
+        val AUTO_CAP_TRAILING_CHARACTERS = setOf('"', '\'', ')', ']', '}', '»', '”')
+    }
+
+    private fun textKey(value: String): KeySpec =
+        KeySpec(
+            value = value,
+            isSpecial = false,
+            weight = 1f,
+        )
 
     private fun actionKey(
         value: String,
         weight: Float = 1f,
         highlighted: Boolean = false,
         action: () -> Unit,
-    ): KeySpec = KeySpec(
-        value = value,
-        isSpecial = true,
-        weight = weight,
-        highlighted = highlighted,
-        action = action,
-    )
+    ): KeySpec =
+        KeySpec(
+            value = value,
+            isSpecial = true,
+            weight = weight,
+            highlighted = highlighted,
+            action = action,
+        )
 }

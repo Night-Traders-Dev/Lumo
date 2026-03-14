@@ -12,6 +12,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import dev.nighttraders.lumo.launcher.lockscreen.LumoLockScreenCompanionService
 import dev.nighttraders.lumo.launcher.notifications.LauncherNotificationCenter
 import dev.nighttraders.lumo.launcher.ui.LumoLockScreenScreen
 import dev.nighttraders.lumo.launcher.ui.rememberSystemStatus
@@ -23,6 +24,7 @@ class LockScreenActivity : ComponentActivity() {
         enableEdgeToEdge()
         setShowWhenLocked(true)
         setTurnScreenOn(true)
+        LumoLockScreenCompanionService.dismissWakeSurface(this)
         configureSystemBars()
 
         setContent {
@@ -41,18 +43,26 @@ class LockScreenActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        LumoLockScreenCompanionService.dismissWakeSurface(this)
         configureSystemBars()
+    }
+
+    override fun onDestroy() {
+        LumoLockScreenCompanionService.dismissWakeSurface(this)
+        super.onDestroy()
     }
 
     private fun attemptUnlock() {
         val keyguardManager = getSystemService(KeyguardManager::class.java)
         if (keyguardManager == null || !keyguardManager.isDeviceLocked) {
+            LumoLockScreenCompanionService.dismissWakeSurface(this)
             finish()
             return
         }
 
         keyguardManager.requestDismissKeyguard(this, object : KeyguardManager.KeyguardDismissCallback() {
             override fun onDismissSucceeded() {
+                LumoLockScreenCompanionService.dismissWakeSurface(this@LockScreenActivity)
                 finish()
             }
         })

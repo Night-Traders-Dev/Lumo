@@ -81,13 +81,23 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     fun openNotification(notification: LauncherNotification): Result<Unit> {
         val directOpen = LumoNotificationListenerService.openNotification(notification.key)
         if (directOpen.getOrNull() == true) {
+            LumoNotificationListenerService.dismissNotification(notification.key)
             return Result.success(Unit)
         }
-        return repository.launchPackage(notification.packageName)
+        val launchResult = repository.launchPackage(notification.packageName)
+        if (launchResult.isSuccess) {
+            LumoNotificationListenerService.dismissNotification(notification.key)
+        }
+        return launchResult
     }
 
-    fun openNotificationApp(notification: LauncherNotification): Result<Unit> =
-        repository.launchPackage(notification.packageName)
+    fun openNotificationApp(notification: LauncherNotification): Result<Unit> {
+        val launchResult = repository.launchPackage(notification.packageName)
+        if (launchResult.isSuccess) {
+            LumoNotificationListenerService.dismissNotification(notification.key)
+        }
+        return launchResult
+    }
 
     fun dismissNotification(notification: LauncherNotification): Result<Unit> =
         LumoNotificationListenerService.dismissNotification(notification.key)

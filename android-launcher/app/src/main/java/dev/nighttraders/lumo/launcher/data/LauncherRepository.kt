@@ -35,6 +35,11 @@ class LauncherRepository(private val context: Context) {
             preferences[LauncherPreferences.overlaySidebarEnabled] ?: false
         }
 
+    fun observeLockScreenCompanionEnabled(): Flow<Boolean> =
+        context.launcherPreferences.data.map { preferences ->
+            preferences[LauncherPreferences.lockScreenCompanionEnabled] ?: false
+        }
+
     suspend fun loadApps(): List<LaunchableApp> = withContext(Dispatchers.IO) {
         val density = context.resources.displayMetrics.density
         val iconSizePx = (ICON_SIZE_DP * density).toInt()
@@ -111,6 +116,15 @@ class LauncherRepository(private val context: Context) {
     suspend fun setOverlaySidebarEnabled(enabled: Boolean) {
         context.launcherPreferences.edit { preferences ->
             preferences[LauncherPreferences.overlaySidebarEnabled] = enabled
+        }
+    }
+
+    suspend fun isLockScreenCompanionEnabled(): Boolean =
+        context.launcherPreferences.data.first()[LauncherPreferences.lockScreenCompanionEnabled] ?: false
+
+    suspend fun setLockScreenCompanionEnabled(enabled: Boolean) {
+        context.launcherPreferences.edit { preferences ->
+            preferences[LauncherPreferences.lockScreenCompanionEnabled] = enabled
         }
     }
 

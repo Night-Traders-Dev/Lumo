@@ -60,6 +60,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -881,82 +882,84 @@ private fun NotificationHeadsUp(
     onDismissNotification: () -> Result<Unit>,
     onDismiss: () -> Unit,
 ) {
-    val dismissState = rememberSwipeToDismissBoxState(
-        confirmValueChange = { value ->
-            if (value == SwipeToDismissBoxValue.Settled) {
-                false
-            } else {
-                onDismissNotification().isSuccess
-            }
-        },
-    )
+    key(notification.key) {
+        val dismissState = rememberSwipeToDismissBoxState(
+            confirmValueChange = { value ->
+                if (value == SwipeToDismissBoxValue.Settled) {
+                    false
+                } else {
+                    onDismissNotification().isSuccess
+                }
+            },
+        )
 
-    SwipeToDismissBox(
-        state = dismissState,
-        modifier = modifier.fillMaxWidth(),
-        backgroundContent = {
-            NotificationDismissBackground()
-        },
-        content = {
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .combinedClickable(
-                        onClick = onOpenNotification,
-                        onLongClick = onLongPressNotification,
-                    ),
-                color = Color(0xEE2C001E),
-                shape = RoundedCornerShape(22.dp),
-                shadowElevation = 12.dp,
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+        SwipeToDismissBox(
+            state = dismissState,
+            modifier = modifier.fillMaxWidth(),
+            backgroundContent = {
+                NotificationDismissBackground()
+            },
+            content = {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .combinedClickable(
+                            onClick = onOpenNotification,
+                            onLongClick = onLongPressNotification,
+                        ),
+                    color = Color(0xEE2C001E),
+                    shape = RoundedCornerShape(22.dp),
+                    shadowElevation = 12.dp,
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(10.dp)
-                            .clip(CircleShape)
-                            .background(if (notification.isMessaging) MaterialTheme.colorScheme.primary else Color(0xFFB8AFBA)),
-                    )
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(10.dp)
+                                .clip(CircleShape)
+                                .background(if (notification.isMessaging) MaterialTheme.colorScheme.primary else Color(0xFFB8AFBA)),
+                        )
 
-                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(
-                            text = notification.appLabel,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Color(0xFFB8AFBA),
-                        )
-                        Text(
-                            text = notification.title,
-                            style = MaterialTheme.typography.titleSmall,
-                            color = Color.White,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        if (notification.message.isNotBlank()) {
+                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             Text(
-                                text = notification.message,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = Color(0xFFE7DFEA),
-                                maxLines = 2,
+                                text = notification.appLabel,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color(0xFFB8AFBA),
+                            )
+                            Text(
+                                text = notification.title,
+                                style = MaterialTheme.typography.titleSmall,
+                                color = Color.White,
+                                maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
+                            if (notification.message.isNotBlank()) {
+                                Text(
+                                    text = notification.message,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = Color(0xFFE7DFEA),
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
                         }
-                    }
 
-                    Icon(
-                        imageVector = Icons.Rounded.Notifications,
-                        contentDescription = null,
-                        tint = Color.White,
-                        modifier = Modifier
-                            .size(20.dp)
-                            .clickable(onClick = onDismiss),
-                    )
+                        Icon(
+                            imageVector = Icons.Rounded.Notifications,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier
+                                .size(20.dp)
+                                .clickable(onClick = onDismiss),
+                        )
+                    }
                 }
-            }
-        },
-    )
+            },
+        )
+    }
 }
 
 @Composable
@@ -1133,61 +1136,63 @@ private fun NotificationListItem(
     onLongPressNotification: (LauncherNotification) -> Unit,
     onDismissNotification: (LauncherNotification) -> Result<Unit>,
 ) {
-    val dismissState = rememberSwipeToDismissBoxState(
-        confirmValueChange = { value ->
-            if (value == SwipeToDismissBoxValue.Settled) {
-                false
-            } else {
-                onDismissNotification(notification).isSuccess
-            }
-        },
-    )
+    key(notification.key) {
+        val dismissState = rememberSwipeToDismissBoxState(
+            confirmValueChange = { value ->
+                if (value == SwipeToDismissBoxValue.Settled) {
+                    false
+                } else {
+                    onDismissNotification(notification).isSuccess
+                }
+            },
+        )
 
-    SwipeToDismissBox(
-        state = dismissState,
-        backgroundContent = {
-            NotificationDismissBackground()
-        },
-        content = {
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .combinedClickable(
-                        onClick = { onOpenNotification(notification) },
-                        onLongClick = { onLongPressNotification(notification) },
-                    ),
-                color = Color(0x33000000),
-                shape = RoundedCornerShape(18.dp),
-            ) {
-                Column(
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
+        SwipeToDismissBox(
+            state = dismissState,
+            backgroundContent = {
+                NotificationDismissBackground()
+            },
+            content = {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .combinedClickable(
+                            onClick = { onOpenNotification(notification) },
+                            onLongClick = { onLongPressNotification(notification) },
+                        ),
+                    color = Color(0x33000000),
+                    shape = RoundedCornerShape(18.dp),
                 ) {
-                    Text(
-                        text = notification.appLabel,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Color(0xFFB8AFBA),
-                    )
-                    Text(
-                        text = notification.title,
-                        style = MaterialTheme.typography.titleSmall,
-                        color = Color.White,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    if (notification.message.isNotBlank()) {
+                    Column(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
                         Text(
-                            text = notification.message,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color(0xFFE7DFEA),
-                            maxLines = 2,
+                            text = notification.appLabel,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color(0xFFB8AFBA),
+                        )
+                        Text(
+                            text = notification.title,
+                            style = MaterialTheme.typography.titleSmall,
+                            color = Color.White,
+                            maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
+                        if (notification.message.isNotBlank()) {
+                            Text(
+                                text = notification.message,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFFE7DFEA),
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
                     }
                 }
-            }
-        },
-    )
+            },
+        )
+    }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
